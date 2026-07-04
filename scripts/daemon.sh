@@ -35,11 +35,16 @@ write_daemon_env() {
 	local node_uuid daemon_token
 	node_uuid=$(cat /proc/sys/kernel/random/uuid)
 
-	echo
-	echo "$(msg daemon_token_intro)"
-	read -rp "$(msg daemon_token_ask)" daemon_token
-	if [[ -z "$daemon_token" ]]; then
-		die "A daemon token is required — create the node in the panel first (Nodes -> Add node)"
+	if [[ -n "${WINGSD_DAEMON_TOKEN:-}" ]]; then
+		daemon_token="$WINGSD_DAEMON_TOKEN"
+		log_ok "Using daemon token from WINGSD_DAEMON_TOKEN"
+	else
+		echo
+		echo "$(msg daemon_token_intro)"
+		read -rp "$(msg daemon_token_ask)" daemon_token
+		if [[ -z "$daemon_token" ]]; then
+			die "A daemon token is required — create the node in the panel first (Nodes -> Add node)"
+		fi
 	fi
 
 	cat >"$DAEMON_ENV_FILE" <<-EOF

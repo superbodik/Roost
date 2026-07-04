@@ -70,6 +70,12 @@ run_uninstall() {
 }
 
 main() {
+	if [[ -n "${WINGSD_DAEMON_TOKEN:-}" ]]; then
+		preflight
+		run_daemon_node
+		return
+	fi
+
 	select_language
 	preflight
 

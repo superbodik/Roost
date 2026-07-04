@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { CreateNodeResponse, Node } from '../types';
 
+const INSTALL_SCRIPT_URL = 'https://raw.githubusercontent.com/superbodik/sbPanel/main/install.sh';
+
+function nodeInstallCommand(daemonToken: string): string {
+  return `WINGSD_DAEMON_TOKEN=${daemonToken} bash <(curl -sSL ${INSTALL_SCRIPT_URL})`;
+}
+
 export function Nodes() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,10 +59,22 @@ export function Nodes() {
 
       {justCreated && (
         <div className="acc-card" style={{ marginBottom: 20 }}>
-          <div className="acc-card-title">Node created — copy the daemon token now</div>
+          <div className="acc-card-title">Node created — run this on the node</div>
           <p className="srv-desc" style={{ marginBottom: 10 }}>
-            This is shown once. Paste it when <code>scripts/daemon.sh</code> asks for
-            &quot;the daemon token issued by the panel&quot; on that node.
+            Copy this command and run it on the node's server (as root). It installs Docker
+            and wingsd and registers the daemon token automatically — no prompts.
+          </p>
+          <div className="api-item">
+            <span className="api-key">{nodeInstallCommand(justCreated.daemon_token)}</span>
+            <button
+              className="btn-sm"
+              onClick={() => navigator.clipboard?.writeText(nodeInstallCommand(justCreated.daemon_token))}
+            >
+              Copy
+            </button>
+          </div>
+          <p className="srv-desc" style={{ marginTop: 12, marginBottom: 6 }}>
+            Raw token, shown once, in case you're installing manually:
           </p>
           <div className="api-item">
             <span className="api-key">{justCreated.daemon_token}</span>
