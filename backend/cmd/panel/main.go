@@ -40,7 +40,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.AccessTokenTTL)
+	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 	resolveNodeClient := nodeClientResolver(pool, cfg.EncryptionKey)
 
 	resolveServerClient := func(ctx context.Context, serverUUID uuid.UUID) (*daemonclient.Client, error) {

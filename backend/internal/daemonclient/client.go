@@ -47,6 +47,7 @@ type CreateServerRequest struct {
 	IOWeight       int               `json:"io_weight"`
 	CPUPercent     int               `json:"cpu_percent"`
 	InstallScript  string            `json:"install_script"`
+	PortBindings   map[string]string `json:"port_bindings"`
 }
 
 type OperationResponse struct {

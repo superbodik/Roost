@@ -7,14 +7,20 @@ plan changes; treat it as append/edit, not write-once.
 
 ## Current state (as of this writing)
 
-Pages wired into `App.tsx`'s sidebar: **Servers** (dashboard, `pages/Dashboard.tsx`
-+ `components/ServerList.tsx`), **Nodes** (`pages/Nodes.tsx`), **Settings**
-(`pages/Settings.tsx` — version + update check). Clicking "Manage" on a
-server card now goes somewhere: **`pages/ServerView.tsx`**, tab-bar with
+Pages wired into `App.tsx`'s sidebar: **Servers** (dashboard,
+`pages/Dashboard.tsx` + `components/ServerList.tsx`, now with a
+**"+ Create Server" form** — `components/CreateServerForm.tsx` — that
+actually creates a container on the daemon), **Nodes** (`pages/Nodes.tsx`,
+now also manages **Allocations** per node), **Activity**
+(`pages/Activity.tsx` — real log, not a placeholder), **Settings**
+(`pages/Settings.tsx` — version + update check), **Account**
+(`pages/Account.tsx` — API key management; reachable from the sidebar or
+by clicking the user chip in the topbar). Clicking "Manage" on a server
+card goes to **`pages/ServerView.tsx`**, tab-bar with
 Overview/Console/Files/Databases/Schedules — Overview (power buttons +
-live CPU/RAM/Disk meters) and **Console (real, bidirectional)** are wired;
+live CPU/RAM/Disk meters) and Console (real, bidirectional) are wired;
 Files/Databases/Schedules are honest "not implemented yet" panels, not
-fake UI. **Activity** is still a static, unwired nav item.
+fake UI.
 
 Backend REST surface: auth (login/me), nodes (list/create, admin-gated),
 servers (list/get/power — power is now genuinely wired end to end, see
@@ -63,6 +69,51 @@ install with a non-interactive fast path (`WINGSD_DAEMON_TOKEN=... bash
 <(curl ...)`), update mechanism (`PANEL_UPDATE=1 ./install.sh`, now also
 runs `apply_migrations`), full destructive uninstall gated behind typing
 `DELETE`.
+
+**Login now survives longer than 15 minutes.** `auth.TokenManager` issues
+two JWTs at login: a short-lived access token (`AccessTokenTTL`, unchanged
+at 15m) and a long-lived refresh token (`RefreshTokenTTL`, 30 days — the
+config field existed since the original scaffold but was never actually
+issued or consumed until now). Both carry a `type` claim (`"access"` |
+`"refresh"`); `auth.Middleware` and `authenticateWS` both now reject
+anything that isn't `type=access`, so a leaked/long-lived refresh token
+can't be used to hit the API directly — it can only be exchanged at
+`POST /auth/refresh` for a fresh access+refresh pair. Frontend:
+`api/client.ts`'s `request()` catches a 401, calls `/auth/refresh` once
+(de-duplicated across concurrent callers via a module-level
+`refreshInFlight` promise so five simultaneous 401s don't fire five
+refresh calls), retries the original request, and only forces a real
+logout if the refresh itself fails (refresh token expired or revoked).
+
+**The create-server flow exists now — the gap called out below as "the
+single biggest gap" is closed**, at least for a first working version:
+`backend/migrations/0003_seed_eggs.sql` seeds two starter eggs (a generic
+Ubuntu container and `itzg/minecraft-server`); `EggHandler`/
+`AllocationHandler`/`ServerHandler.Create` are new; the whole creation
+happens inside one DB transaction that only commits *after* the daemon
+confirms the container was actually created (rolls back the server row
+and any claimed allocation otherwise, so a daemon failure never leaves a
+ghost server behind). Along the way, fixed a real bug in
+`daemon/internal/docker/manager.go`: container creation always overrode
+`Cmd` with `/bin/sh -c "<startup_command>"`, even when empty — which
+silently broke any egg (like `itzg/minecraft-server`) that relies on the
+image's own `ENTRYPOINT`. Empty `StartupCommand` now leaves `Cmd` nil so
+Docker falls through to the image's default. Allocations have no
+provisioning UI beyond a bare-bones "add one manually" form on the Nodes
+page (IP + port) — there's still no concept of a port range, reservation,
+or auto-assignment; see roadmap.
+
+**Activity logging** (`internal/activity`) is now called at the three
+places that mattered most: login, node creation, server power actions,
+and server creation. It intentionally swallows its own errors (logs to
+stderr, never fails the calling request) — an activity-log write failing
+is not a reason to fail the user's actual action.
+
+**API keys can be created/listed/deleted** (`Account` page,
+`api_keys` table) but **are not yet a working auth method** — nothing
+checks `api_keys.token_hash` anywhere in `auth.Middleware` or elsewhere.
+Treat this like the Files/Databases/Schedules tabs: real CRUD, honestly
+not wired to anything that uses it yet.
 
 ## Design conventions — follow these before inventing new patterns
 
@@ -144,14 +195,35 @@ runs `apply_migrations`), full destructive uninstall gated behind typing
     instead of being wrapped in the same middleware group as the REST API.
     Every new `/ws/*` route needs this same explicit check; it will not be
     caught by putting the route inside `r.Group(auth.Middleware(...))`.
+12. **Two-token auth: access is short-lived and API-usable, refresh is
+    long-lived and single-purpose.** A JWT's `type` claim (`auth.TokenType`)
+    is what enforces this — `auth.Middleware`/`authenticateWS` both check
+    `claims.Type == auth.TokenAccess` and reject refresh tokens outright.
+    If a future change ever needs a third token flavor (e.g. a one-time
+    WS "ticket" instead of putting the access token in the URL), extend
+    the same `type` claim rather than adding a parallel token system.
+13. **Mutating handlers that change state someone would want an audit
+    trail for call `activity.Record` inline, at the same call site, not as
+    a follow-up pass.** It was added retroactively once already (see
+    the "Activity page" note below on why it was deferred the first
+    time — don't repeat that mistake for the next mutating endpoint).
+    `activity.Record` never returns an error to the caller; a logging
+    failure must never fail the actual request.
+14. **A DB write that depends on an external call succeeding (the daemon,
+    in `ServerHandler.Create`) goes inside one `pgx.Tx`, and the external
+    call happens *before* `tx.Commit()`, not after.** If the daemon call
+    fails, `defer tx.Rollback(ctx)` undoes the server row and any claimed
+    allocation automatically. Don't insert-then-call-then-cleanup-on-error
+    manually — the deferred rollback pattern is shorter and can't leak a
+    half-created row if a future code path adds an early return.
 
 ## Roadmap — rough priority order
 
 ### Near-term (Server Detail's remaining tabs — Overview + Console are done)
 - **Files tab** — needs daemon file-manager RPCs first (list/read/write/
   delete/rename over HTTP or the proto's streaming RPCs — see
-  docs/PROTOCOL.md §2), then the `.files-table` UI. Bigger lift than
-  Console; do Console first.
+  docs/PROTOCOL.md §2), then the `.files-table` UI. Biggest remaining lift
+  in Server Detail.
 - **Databases tab** — `server_databases` table exists, no handler. Needs a
   decision on how DB credentials actually get provisioned (a MySQL/Postgres
   instance per node? shared? the schema has `database_host_id` pointing at
@@ -162,43 +234,39 @@ runs `apply_migrations`), full destructive uninstall gated behind typing
   needs to wake up and check `cron_minute`/`cron_hour`/etc against wall
   clock and fire `schedule_tasks` in `sequence_id` order) — the UI is the
   easy 10%.
-- **Activity page** — the sidebar nav item already exists and does nothing.
-  panel.css has `.act-table`/`.act-row` ready. Backend has an
-  `activity_logs` table but nothing writes to it yet — writing activity
-  log rows needs to happen at the point of action (login, power actions,
-  node creation), not as an afterthought bolted onto the table later. Do
-  this alongside Console/whatever's next, since power actions are exactly
-  the kind of event this table is for and it's cheap to add a row at the
-  same call site while already touching it.
-- **Account page** — `.acc-grid`/`.acc-card`, `.api-list`/`.api-item` (API
-  keys — backend `api_keys` table exists, no handler), `.twofa-card` (2FA —
-  `users.totp_secret`/`totp_enabled` columns exist, unused).
+- **2FA** — `.twofa-card` exists in panel.css, `users.totp_secret`/
+  `totp_enabled` columns exist, nothing reads or writes them. Account
+  page currently only has the API-keys card.
+- **Allocations need real provisioning**, not a bare IP+port text form —
+  no port-range/bulk-add, no validation that the IP actually belongs to
+  the node, no reservation system. Fine for one operator manually running
+  a handful of servers; won't scale past that.
 
 ### Mid-term (real functionality gaps, not just missing UI)
-- There's still no create-server flow in the UI at all (no "Add Server"
-  button anywhere, no egg/template picker) — `ServerHandler.Create` doesn't
-  even exist yet, only List/Get/Power. This is now the single biggest gap
-  between "looks like Pterodactyl" and "works like Pterodactyl", now that
-  Power/stats are real. Needs: an egg picker (reads from the `eggs` table,
-  which has zero seed data right now — nothing inserts eggs), an allocation
-  picker (free rows in `allocations`), and a call into
-  `daemonclient.Client.CreateServer` (already exists, unused by any handler).
+- **API keys aren't a working auth method yet** — `Account` page and
+  `api_keys` table/handlers exist (create/list/delete), but nothing
+  checks `Authorization: Bearer panel_...` against `token_hash` anywhere.
+  `auth.Middleware` only understands JWTs right now. Wiring this in means
+  teaching `auth.Middleware` to try a JWT parse first, then fall back to
+  an API-key DB lookup (and updating `last_used_at` on hit).
 - RBAC is currently binary (`is_admin` or nothing) — `auth.PermissionChecker`
   interface exists in `backend/internal/auth/rbac.go` but has zero
   implementations wired into the router. `server_subusers` table exists
-  for per-server sharing but nothing reads it.
+  for per-server sharing but nothing reads it. `ServerHandler.Create`
+  in particular has no limit checks against anything resembling a quota.
 - gRPC migration for the daemon protocol (proto file is complete,
   `daemonclient`/`daemon/internal/api` are still the HTTP/WS stand-in) —
   low urgency, only matters once file-manager/backup streaming RPCs need
   the bidirectional-stream ergonomics gRPC gives you for free.
+- Server deletion isn't wired into any handler yet — `daemonclient.Client.
+  DeleteServer` and the daemon's `DELETE /servers/{uuid}` both already
+  exist and work, nothing in `ServerHandler` or the frontend calls them.
+  Cheap follow-up now that Create exists and the pattern is established.
 
 ### Later / polish
 - Frontend i18n (the installer got RU/EN; the SPA itself is still
   English-only — if the Russian-speaking installer experience matters,
   the dashboard probably should too, eventually).
-- Refresh tokens (`auth.AccessTokenTTL` is 15 minutes, no refresh flow —
-  users get silently kicked to the login screen on expiry via the 401
-  handler in `api/client.ts`; fine for now, annoying at scale).
 - SFTP server on wingsd (mentioned in the original spec, not started).
 
 ## Things I keep having to re-explain to myself — write them down once
@@ -228,6 +296,16 @@ runs `apply_migrations`), full destructive uninstall gated behind typing
   read-only stats were. Worth periodically grepping for other
   `r.Get`/`r.Post` calls registered directly on the base router `r`
   instead of inside the authenticated `r.Group` — that's the tell.
+- `docker.Manager.CreateContainer` used to always set `Cmd` to
+  `/bin/sh -c "<startup_command>"`, even when `StartupCommand` was `""` —
+  which produces `/bin/sh -c ""`, a container that starts and immediately
+  exits. This silently broke any egg meant to run via the image's own
+  `ENTRYPOINT` (e.g. `itzg/minecraft-server`, which needs `Cmd` left nil
+  entirely). Found it while seeding the Minecraft egg for the create-server
+  flow — the fix is a three-line `if spec.StartupCommand != ""` guard.
+  Worth remembering: "override unless empty" is the wrong default when
+  wrapping someone else's Docker image; the image's own defaults are
+  usually the point of using it.
 - Any "if the env/config file already exists, skip everything" guard
   (`write_panel_env`'s original shape) is a trap for anything that needs to
   run on *every* install, not just the first one — found this the hard way

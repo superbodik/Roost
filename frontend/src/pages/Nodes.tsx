@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { CreateNodeResponse, Node } from '../types';
+import type { Allocation, CreateNodeResponse, Node } from '../types';
 
 const INSTALL_SCRIPT_URL = 'https://raw.githubusercontent.com/superbodik/sbPanel/main/install.sh';
 
@@ -22,6 +22,46 @@ export function Nodes() {
     disk_mb: 102400,
   });
   const [submitting, setSubmitting] = useState(false);
+
+  const [allocationNodeId, setAllocationNodeId] = useState(0);
+  const [allocations, setAllocations] = useState<Allocation[]>([]);
+  const [allocForm, setAllocForm] = useState({ ip: '', port: 25565 });
+  const [allocError, setAllocError] = useState<string | null>(null);
+  const [allocSubmitting, setAllocSubmitting] = useState(false);
+
+  function refreshAllocations(nodeId: number) {
+    if (!nodeId) {
+      setAllocations([]);
+      return;
+    }
+    api
+      .listAllocations(nodeId)
+      .then(setAllocations)
+      .catch(() => setAllocations([]));
+  }
+
+  useEffect(() => {
+    refreshAllocations(allocationNodeId);
+  }, [allocationNodeId]);
+
+  async function handleCreateAllocation(e: React.FormEvent) {
+    e.preventDefault();
+    setAllocSubmitting(true);
+    setAllocError(null);
+    try {
+      await api.createAllocation({
+        node_id: allocationNodeId,
+        ip: allocForm.ip,
+        port: allocForm.port,
+      });
+      setAllocForm((f) => ({ ...f, port: f.port + 1 }));
+      refreshAllocations(allocationNodeId);
+    } catch (err) {
+      setAllocError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAllocSubmitting(false);
+    }
+  }
 
   function refresh() {
     setLoading(true);
@@ -181,6 +221,92 @@ export function Nodes() {
           {nodes.length === 0 && <p className="srv-desc" style={{ padding: 16 }}>No nodes yet.</p>}
         </div>
       )}
+
+      <div className="settings-card" style={{ marginTop: 24 }}>
+        <div className="settings-card-title">Allocations</div>
+        <div className="settings-grid" style={{ marginBottom: 16 }}>
+          <div className="sfield">
+            <label htmlFor="alloc-node">Node</label>
+            <select
+              id="alloc-node"
+              value={allocationNodeId}
+              onChange={(e) => setAllocationNodeId(Number(e.target.value))}
+            >
+              <option value={0} disabled>
+                Select a node…
+              </option>
+              {nodes.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {allocationNodeId > 0 && (
+          <>
+            <form onSubmit={handleCreateAllocation}>
+              <div className="settings-grid">
+                <div className="sfield">
+                  <label htmlFor="alloc-ip">IP</label>
+                  <input
+                    id="alloc-ip"
+                    value={allocForm.ip}
+                    onChange={(e) => setAllocForm((f) => ({ ...f, ip: e.target.value }))}
+                    placeholder="node's public IP"
+                    required
+                  />
+                </div>
+                <div className="sfield">
+                  <label htmlFor="alloc-port">Port</label>
+                  <input
+                    id="alloc-port"
+                    type="number"
+                    value={allocForm.port}
+                    onChange={(e) => setAllocForm((f) => ({ ...f, port: Number(e.target.value) }))}
+                    required
+                  />
+                </div>
+              </div>
+              {allocError && <div className="login-error show" style={{ marginTop: 12 }}>{allocError}</div>}
+              <div className="settings-foot">
+                <button
+                  className="btn-sm primary"
+                  type="submit"
+                  disabled={allocSubmitting}
+                >
+                  {allocSubmitting ? 'Adding…' : 'Add allocation'}
+                </button>
+              </div>
+            </form>
+
+            <div className="db-table" style={{ marginTop: 16 }}>
+              <div className="db-head">
+                <span>Address</span>
+                <span>Status</span>
+                <span />
+                <span />
+              </div>
+              {allocations.map((a) => (
+                <div className="db-row" key={a.id}>
+                  <span className="db-name">
+                    {a.ip}:{a.port}
+                  </span>
+                  <span>{a.server_id ? 'In use' : 'Free'}</span>
+                  <span />
+                  <span />
+                </div>
+              ))}
+              {allocations.length === 0 && (
+                <p className="srv-desc" style={{ padding: 16 }}>
+                  No allocations on this node yet.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

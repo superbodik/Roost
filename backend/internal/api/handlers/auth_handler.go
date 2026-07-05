@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/yourorg/panel/internal/activity"
 	"github.com/yourorg/panel/internal/auth"
 )
 
@@ -20,9 +21,10 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-type loginResponse struct {
-	AccessToken string `json:"access_token"`
-	User        struct {
+type tokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	User         struct {
 		ID       int64  `json:"id"`
 		Email    string `json:"email"`
 		Username string `json:"username"`
@@ -62,14 +64,75 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.Token.Issue(id, email, isAdmin)
+	accessToken, err := h.Token.Issue(id, email, isAdmin)
+	if err != nil {
+		http.Error(w, "failed to issue token", http.StatusInternalServerError)
+		return
+	}
+	refreshToken, err := h.Token.IssueRefresh(id, email, isAdmin)
 	if err != nil {
 		http.Error(w, "failed to issue token", http.StatusInternalServerError)
 		return
 	}
 
-	resp := loginResponse{AccessToken: token}
+	activity.Record(r.Context(), h.DB, activity.Entry{
+		ActorUserID: &id,
+		Event:       "user.login",
+		IPAddress:   activity.RequestIP(r),
+	})
+
+	resp := tokenResponse{AccessToken: accessToken, RefreshToken: refreshToken}
 	resp.User.ID = id
+	resp.User.Email = email
+	resp.User.Username = username
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req refreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	claims, err := h.Token.ParseRefresh(req.RefreshToken)
+	if err != nil {
+		http.Error(w, "invalid or expired refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	var (
+		email    string
+		username string
+		isAdmin  bool
+		isActive bool
+	)
+	err = h.DB.QueryRow(r.Context(),
+		`SELECT email, username, is_admin, is_active FROM users WHERE id = $1`, claims.UserID,
+	).Scan(&email, &username, &isAdmin, &isActive)
+	if err != nil || !isActive {
+		http.Error(w, "account no longer active", http.StatusUnauthorized)
+		return
+	}
+
+	accessToken, err := h.Token.Issue(claims.UserID, email, isAdmin)
+	if err != nil {
+		http.Error(w, "failed to issue token", http.StatusInternalServerError)
+		return
+	}
+	refreshToken, err := h.Token.IssueRefresh(claims.UserID, email, isAdmin)
+	if err != nil {
+		http.Error(w, "failed to issue token", http.StatusInternalServerError)
+		return
+	}
+
+	resp := tokenResponse{AccessToken: accessToken, RefreshToken: refreshToken}
+	resp.User.ID = claims.UserID
 	resp.User.Email = email
 	resp.User.Username = username
 

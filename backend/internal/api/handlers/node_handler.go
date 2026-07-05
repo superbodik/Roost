@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/yourorg/panel/internal/activity"
 	"github.com/yourorg/panel/internal/auth"
 	"github.com/yourorg/panel/internal/crypto"
 )
@@ -73,6 +74,16 @@ func (h *NodeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "failed to create node", http.StatusInternalServerError)
 		return
+	}
+
+	if claims, ok := auth.FromContext(r.Context()); ok {
+		activity.Record(r.Context(), h.DB, activity.Entry{
+			ActorUserID: &claims.UserID,
+			NodeID:      &id,
+			Event:       "node.create",
+			IPAddress:   activity.RequestIP(r),
+			Metadata:    map[string]any{"name": req.Name, "fqdn": req.FQDN},
+		})
 	}
 
 	writeJSON(w, http.StatusCreated, createNodeResponse{ID: id, DaemonToken: rawToken})

@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { clearTokens } from './api/client';
+import { Account } from './pages/Account';
+import { Activity } from './pages/Activity';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Nodes } from './pages/Nodes';
@@ -11,7 +14,7 @@ interface StoredUser {
   username: string;
 }
 
-type View = 'servers' | 'nodes' | 'settings';
+type View = 'servers' | 'nodes' | 'settings' | 'activity' | 'account';
 
 function loadUser(): StoredUser | null {
   const raw = localStorage.getItem('user');
@@ -29,8 +32,7 @@ export function App() {
   const [activeServer, setActiveServer] = useState<string | null>(null);
 
   function handleLogout() {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
+    clearTokens();
     setUser(null);
   }
 
@@ -58,7 +60,15 @@ export function App() {
         <div className="topbar-sep" />
         <nav className="breadcrumb">
           <span className={activeServer ? '' : 'bc-cur'} onClick={() => goTo('servers')}>
-            {view === 'nodes' ? 'Nodes' : view === 'settings' ? 'Settings' : 'Dashboard'}
+            {view === 'nodes'
+              ? 'Nodes'
+              : view === 'settings'
+                ? 'Settings'
+                : view === 'activity'
+                  ? 'Activity'
+                  : view === 'account'
+                    ? 'Account'
+                    : 'Dashboard'}
           </span>
           {activeServer && (
             <>
@@ -68,7 +78,7 @@ export function App() {
           )}
         </nav>
         <div className="topbar-right">
-          <div className="user-chip">
+          <div className="user-chip" onClick={() => goTo('account')} style={{ cursor: 'pointer' }}>
             <div className="user-ava">{user.username.slice(0, 1).toUpperCase()}</div>
             <span className="user-name">{user.username}</span>
           </div>
@@ -94,7 +104,10 @@ export function App() {
             >
               <span className="nav-icon">◆</span> Nodes
             </div>
-            <div className="nav-item">
+            <div
+              className={`nav-item ${view === 'activity' ? 'active' : ''}`}
+              onClick={() => goTo('activity')}
+            >
               <span className="nav-icon">☰</span> Activity
             </div>
             <div
@@ -102,6 +115,12 @@ export function App() {
               onClick={() => goTo('settings')}
             >
               <span className="nav-icon">⚙</span> Settings
+            </div>
+            <div
+              className={`nav-item ${view === 'account' ? 'active' : ''}`}
+              onClick={() => goTo('account')}
+            >
+              <span className="nav-icon">◈</span> Account
             </div>
           </div>
           <div className="sidebar-footer">
@@ -118,6 +137,10 @@ export function App() {
             <Nodes />
           ) : view === 'settings' ? (
             <Settings />
+          ) : view === 'activity' ? (
+            <Activity />
+          ) : view === 'account' ? (
+            <Account />
           ) : (
             <Dashboard onManage={setActiveServer} />
           )}

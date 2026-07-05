@@ -51,9 +51,14 @@ func NewRouter(deps Dependencies) http.Handler {
 		SourceDir: deps.SourceDir,
 		RepoSlug:  deps.RepoSlug,
 	}
+	activityHandler := &handlers.ActivityHandler{DB: deps.DB}
+	eggHandler := &handlers.EggHandler{DB: deps.DB}
+	allocationHandler := &handlers.AllocationHandler{DB: deps.DB}
+	apiKeyHandler := &handlers.APIKeyHandler{DB: deps.DB}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
+		r.Post("/auth/refresh", authHandler.Refresh)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Token))
@@ -64,11 +69,23 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.With(auth.RequireAdmin).Post("/nodes", nodeHandler.Create)
 
 			r.Get("/servers", serverHandler.List)
+			r.Post("/servers", serverHandler.Create)
 			r.Get("/servers/{uuid}", serverHandler.Get)
 			r.Post("/servers/{uuid}/power", serverHandler.Power)
 
+			r.Get("/eggs", eggHandler.List)
+
+			r.Get("/allocations", allocationHandler.List)
+			r.With(auth.RequireAdmin).Post("/allocations", allocationHandler.Create)
+
 			r.Get("/version", versionHandler.Get)
 			r.Get("/version/check", versionHandler.CheckUpdate)
+
+			r.Get("/activity", activityHandler.List)
+
+			r.Get("/account/api-keys", apiKeyHandler.List)
+			r.Post("/account/api-keys", apiKeyHandler.Create)
+			r.Delete("/account/api-keys/{id}", apiKeyHandler.Delete)
 		})
 	})
 
@@ -106,6 +123,6 @@ func authenticateWS(r *http.Request, tm *auth.TokenManager) bool {
 	if token == "" {
 		return false
 	}
-	_, err := tm.Parse(token)
-	return err == nil
+	claims, err := tm.Parse(token)
+	return err == nil && claims.Type == auth.TokenAccess
 }

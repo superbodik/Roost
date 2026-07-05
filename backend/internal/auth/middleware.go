@@ -21,7 +21,7 @@ func Middleware(tm *TokenManager) func(http.Handler) http.Handler {
 			}
 
 			claims, err := tm.Parse(token)
-			if err != nil {
+			if err != nil || claims.Type != TokenAccess {
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}

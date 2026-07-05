@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../api/client';
+import { api, storeTokens } from '../api/client';
 
 interface Props {
   onLoggedIn: () => void;
@@ -16,9 +16,8 @@ export function Login({ onLoggedIn }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      const { access_token, user } = await api.login(email, password);
-      localStorage.setItem('access_token', access_token);
-      localStorage.setItem('user', JSON.stringify(user));
+      const tokens = await api.login(email, password);
+      storeTokens(tokens);
       onLoggedIn();
     } catch {
       setError('Invalid email or password');

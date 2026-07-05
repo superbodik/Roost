@@ -95,3 +95,63 @@ export interface UpdateCheck {
   latest_commit: string;
   update_available: boolean;
 }
+
+export interface ActivityEntry {
+  id: number;
+  username: string | null;
+  event: string;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface Egg {
+  id: number;
+  category: string;
+  name: string;
+  description: string;
+  docker_image: string;
+  startup_command: string;
+}
+
+export interface Allocation {
+  id: number;
+  node_id: number;
+  ip: string;
+  port: number;
+  alias: string | null;
+  server_id: number | null;
+}
+
+export interface CreateServerRequest {
+  name: string;
+  description?: string;
+  node_id: number;
+  egg_id: number;
+  docker_image: string;
+  startup_command: string;
+  environment: Record<string, string>;
+  memory_mb: number;
+  swap_mb: number;
+  disk_mb: number;
+  allocation_id?: number;
+}
+
+export interface CreateAllocationRequest {
+  node_id: number;
+  ip: string;
+  port: number;
+  alias?: string;
+}
+
+export interface ApiKey {
+  id: number;
+  name: string;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface CreateApiKeyResponse {
+  id: number;
+  name: string;
+  token: string;
+}

@@ -79,10 +79,15 @@ func (m *Manager) CreateContainer(ctx context.Context, spec CreateSpec) (string,
 		return "", fmt.Errorf("invalid port bindings: %w", err)
 	}
 
+	var cmd []string
+	if spec.StartupCommand != "" {
+		cmd = []string{"/bin/sh", "-c", spec.StartupCommand}
+	}
+
 	containerName := "srv-" + spec.ServerUUID.String()
 	created, err := m.cli.ContainerCreate(ctx, &container.Config{
 		Image:        spec.DockerImage,
-		Cmd:          []string{"/bin/sh", "-c", spec.StartupCommand},
+		Cmd:          cmd,
 		Env:          env,
 		ExposedPorts: exposedPorts,
 		Tty:          true,
