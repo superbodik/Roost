@@ -81,6 +81,22 @@ func (c *Client) DeleteServer(ctx context.Context, serverUUID uuid.UUID) error {
 	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
 }
 
+func (c *Client) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/healthz", nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("call node daemon: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("node daemon returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
 type ResourceStats struct {
 	ServerUUID    uuid.UUID `json:"server_uuid"`
 	CPUPercent    float64   `json:"cpu_percent"`

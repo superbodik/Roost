@@ -204,6 +204,26 @@ ServerView's Overview tab, `window.confirm` before calling it (no custom
 modal system exists yet, and this is a one-off enough action that
 building one wasn't justified).
 
+**Nodes now have a real connectivity check, not just a `last_seen_at`
+column that nothing ever writes to** — the Status column used to show
+"Online"/"Never seen" based on `nodes.last_seen_at`, but no code path
+anywhere ever updates that column, so it silently always said "Never
+seen" regardless of actual state (found while chasing a live "POST
+/servers failed: 502" report — the Nodes page gave no way to tell
+"daemon down" from "bad token" from "wrong port" without SSHing in and
+reading `journalctl -u panel`). Added a real fix: `wingsd` grew an
+unauthenticated `GET /healthz` (moved `RequireDaemonToken` into an
+`r.Group` so it doesn't cover this one route — a health check has to
+work *before* proving you have a valid token, that's the whole point),
+`daemonclient.Client.Ping` hits it, and the panel exposes
+`GET /nodes/{id}/status` (resolves the node's client the same way
+server-create does, so it surfaces the exact same failure modes: missing
+`daemon_token_encrypted`, decrypt failure, connection refused, etc.) A
+"⟳" button on the Nodes page calls it on demand and shows the real error
+inline (`title` attribute has the full text, the row shows a truncated
+one-liner) — this turns "why did create fail" from "read the server's
+systemd journal" into "click one button in the UI."
+
 ## Design conventions — follow these before inventing new patterns
 
 1. **Never invent new CSS.** `frontend/src/styles/panel.css` is the design
@@ -451,3 +471,15 @@ building one wasn't justified).
   a new "only do this once" step, ask separately "does this specific piece
   need to happen once, or every time" — don't assume the whole function is
   one atomic once-only unit.
+- **`r.Use(someMiddleware)` on chi's base router applies to every route
+  ever registered on it, including ones added later in the same function**
+  — same root cause as the WS-auth gap above, hit again while adding
+  `wingsd`'s `/healthz`: `RequireDaemonToken` was a top-level `r.Use`, so
+  a health-check endpoint meant to work *without* a token would have
+  required one anyway just by being registered on the same router. Fixed
+  by moving the token check into an `r.Group(...)` that only wraps the
+  routes that actually need auth, with `/healthz` registered outside it.
+  When adding any endpoint that's deliberately public (health checks,
+  webhooks with their own signature scheme), register it before/outside
+  the auth group rather than assuming a later route can opt out of an
+  earlier blanket `r.Use`.

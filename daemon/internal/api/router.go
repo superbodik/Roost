@@ -17,24 +17,32 @@ func NewRouter(dockerManager *docker.Manager, consoleHub *console.Hub, daemonTok
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
-	r.Use(RequireDaemonToken(daemonToken))
 
-	h := &Handlers{Docker: dockerManager, Console: consoleHub}
-
-	r.Route("/api/v1", func(r chi.Router) {
-		r.Post("/servers", h.CreateServer)
-		r.Post("/servers/{uuid}/power", h.Power)
-		r.Delete("/servers/{uuid}", h.Delete)
-		r.Get("/servers/{uuid}/stats", h.Stats)
-
-		r.Get("/servers/{uuid}/files", h.ListFiles)
-		r.Get("/servers/{uuid}/files/contents", h.ReadFile)
-		r.Put("/servers/{uuid}/files/contents", h.WriteFile)
-		r.Delete("/servers/{uuid}/files", h.DeleteFile)
-		r.Post("/servers/{uuid}/files/directory", h.CreateDirectory)
-		r.Post("/servers/{uuid}/files/rename", h.RenameFile)
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
 	})
-	r.Get("/ws/servers/{uuid}", h.ConsoleSocket)
+
+	r.Group(func(r chi.Router) {
+		r.Use(RequireDaemonToken(daemonToken))
+
+		h := &Handlers{Docker: dockerManager, Console: consoleHub}
+
+		r.Route("/api/v1", func(r chi.Router) {
+			r.Post("/servers", h.CreateServer)
+			r.Post("/servers/{uuid}/power", h.Power)
+			r.Delete("/servers/{uuid}", h.Delete)
+			r.Get("/servers/{uuid}/stats", h.Stats)
+
+			r.Get("/servers/{uuid}/files", h.ListFiles)
+			r.Get("/servers/{uuid}/files/contents", h.ReadFile)
+			r.Put("/servers/{uuid}/files/contents", h.WriteFile)
+			r.Delete("/servers/{uuid}/files", h.DeleteFile)
+			r.Post("/servers/{uuid}/files/directory", h.CreateDirectory)
+			r.Post("/servers/{uuid}/files/rename", h.RenameFile)
+		})
+		r.Get("/ws/servers/{uuid}", h.ConsoleSocket)
+	})
 
 	return r
 }

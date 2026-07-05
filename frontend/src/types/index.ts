@@ -68,6 +68,11 @@ export interface Node {
   last_seen_at: string | null;
 }
 
+export interface NodeStatus {
+  online: boolean;
+  error?: string;
+}
+
 export interface CreateNodeRequest {
   name: string;
   location_id: number;

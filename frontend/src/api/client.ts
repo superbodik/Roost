@@ -11,6 +11,7 @@ import type {
   Egg,
   FileEntry,
   Node,
+  NodeStatus,
   PowerAction,
   Schedule,
   Server,
@@ -170,6 +171,8 @@ export const api = {
 
   createNode: (payload: CreateNodeRequest) =>
     request<CreateNodeResponse>('/nodes', { method: 'POST', body: JSON.stringify(payload) }),
+
+  checkNodeStatus: (id: number) => request<NodeStatus>(`/nodes/${id}/status`),
 
   getVersion: () => request<VersionInfo>('/version'),
 

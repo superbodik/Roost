@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { Allocation, CreateNodeResponse, Node } from '../types';
+import type { Allocation, CreateNodeResponse, Node, NodeStatus } from '../types';
 
 const INSTALL_SCRIPT_URL = 'https://raw.githubusercontent.com/superbodik/sbPanel/main/install.sh';
 
@@ -28,6 +28,21 @@ export function Nodes() {
   const [allocForm, setAllocForm] = useState({ ip: '', port: 25565 });
   const [allocError, setAllocError] = useState<string | null>(null);
   const [allocSubmitting, setAllocSubmitting] = useState(false);
+
+  const [statuses, setStatuses] = useState<Record<number, NodeStatus | 'checking'>>({});
+
+  async function handleCheckStatus(nodeId: number) {
+    setStatuses((s) => ({ ...s, [nodeId]: 'checking' }));
+    try {
+      const status = await api.checkNodeStatus(nodeId);
+      setStatuses((s) => ({ ...s, [nodeId]: status }));
+    } catch (err) {
+      setStatuses((s) => ({
+        ...s,
+        [nodeId]: { online: false, error: err instanceof Error ? err.message : String(err) },
+      }));
+    }
+  }
 
   function refreshAllocations(nodeId: number) {
     if (!nodeId) {
@@ -208,16 +223,45 @@ export function Nodes() {
             <span>Memory / Disk</span>
             <span>Status</span>
           </div>
-          {nodes.map((node) => (
-            <div className="db-row" key={node.id}>
-              <span className="db-name">{node.name}</span>
-              <span className="db-pw">
-                {node.scheme}://{node.fqdn}:{node.daemon_port}
-              </span>
-              <span>{node.memory_mb} MB / {node.disk_mb} MB</span>
-              <span>{node.maintenance_mode ? 'Maintenance' : node.last_seen_at ? 'Online' : 'Never seen'}</span>
-            </div>
-          ))}
+          {nodes.map((node) => {
+            const status = statuses[node.id];
+            return (
+              <div className="db-row" key={node.id}>
+                <span className="db-name">{node.name}</span>
+                <span className="db-pw">
+                  {node.scheme}://{node.fqdn}:{node.daemon_port}
+                </span>
+                <span>{node.memory_mb} MB / {node.disk_mb} MB</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  {status === 'checking' ? (
+                    'Checking…'
+                  ) : status ? (
+                    <span
+                      title={status.error ?? ''}
+                      style={{
+                        color: status.online ? 'var(--pink-b)' : '#f23f43',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {status.online ? 'Online' : `Unreachable: ${status.error ?? 'unknown error'}`}
+                    </span>
+                  ) : (
+                    'Unknown'
+                  )}
+                  <button
+                    className="file-act-btn"
+                    title="Check connection"
+                    onClick={() => handleCheckStatus(node.id)}
+                    style={{ flexShrink: 0 }}
+                  >
+                    ⟳
+                  </button>
+                </span>
+              </div>
+            );
+          })}
           {nodes.length === 0 && <p className="srv-desc" style={{ padding: 16 }}>No nodes yet.</p>}
         </div>
       )}

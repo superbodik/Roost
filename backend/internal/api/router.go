@@ -46,7 +46,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	}))
 
 	authHandler := &handlers.AuthHandler{DB: deps.DB, Token: deps.Token}
-	nodeHandler := &handlers.NodeHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey}
+	nodeHandler := &handlers.NodeHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey, NodeClient: deps.NodeClient}
 	serverHandler := &handlers.ServerHandler{DB: deps.DB, NodeClient: deps.NodeClient}
 	versionHandler := &handlers.VersionHandler{
 		Commit:    deps.Commit,
@@ -72,6 +72,7 @@ func NewRouter(deps Dependencies) http.Handler {
 
 			r.Get("/nodes", nodeHandler.List)
 			r.With(auth.RequireAdmin).Post("/nodes", nodeHandler.Create)
+			r.Get("/nodes/{id}/status", nodeHandler.Status)
 
 			r.Get("/servers", serverHandler.List)
 			r.Post("/servers", serverHandler.Create)

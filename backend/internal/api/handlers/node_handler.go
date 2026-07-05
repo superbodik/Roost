@@ -5,17 +5,21 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourorg/panel/internal/activity"
 	"github.com/yourorg/panel/internal/auth"
 	"github.com/yourorg/panel/internal/crypto"
+	"github.com/yourorg/panel/internal/daemonclient"
 )
 
 type NodeHandler struct {
 	DB            *pgxpool.Pool
 	EncryptionKey string
+	NodeClient    func(nodeID int64) (*daemonclient.Client, error)
 }
 
 type createNodeRequest struct {
@@ -124,6 +128,32 @@ func (h *NodeHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, nodes)
+}
+
+type nodeStatusResponse struct {
+	Online bool   `json:"online"`
+	Error  string `json:"error,omitempty"`
+}
+
+func (h *NodeHandler) Status(w http.ResponseWriter, r *http.Request) {
+	nodeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid node id", http.StatusBadRequest)
+		return
+	}
+
+	client, err := h.NodeClient(nodeID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, nodeStatusResponse{Online: false, Error: err.Error()})
+		return
+	}
+
+	if err := client.Ping(r.Context()); err != nil {
+		writeJSON(w, http.StatusOK, nodeStatusResponse{Online: false, Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, nodeStatusResponse{Online: true})
 }
 
 func generateToken(n int) (string, error) {
