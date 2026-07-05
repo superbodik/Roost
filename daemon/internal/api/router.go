@@ -25,6 +25,7 @@ func NewRouter(dockerManager *docker.Manager, consoleHub *console.Hub, daemonTok
 		r.Post("/servers", h.CreateServer)
 		r.Post("/servers/{uuid}/power", h.Power)
 		r.Delete("/servers/{uuid}", h.Delete)
+		r.Get("/servers/{uuid}/stats", h.Stats)
 	})
 	r.Get("/ws/servers/{uuid}", h.ConsoleSocket)
 

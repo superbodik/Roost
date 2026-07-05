@@ -86,6 +86,10 @@ create_admin_interactive() {
 write_panel_env() {
 	if [[ -f "$PANEL_ENV_FILE" ]]; then
 		log_warn "$PANEL_ENV_FILE already exists — leaving secrets untouched"
+		local existing_db_url db_password
+		existing_db_url=$(grep '^PANEL_DATABASE_URL=' "$PANEL_ENV_FILE" | cut -d= -f2-)
+		db_password=$(echo "$existing_db_url" | sed -E 's#^postgres://[^:]+:([^@]+)@.*#\1#')
+		apply_migrations "$db_password"
 		return
 	fi
 

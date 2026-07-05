@@ -16,14 +16,15 @@ import (
 )
 
 type Dependencies struct {
-	DB         *pgxpool.Pool
-	Token      *auth.TokenManager
-	Hub        *ws.Hub
-	NodeClient func(nodeID int64) (*daemonclient.Client, error)
-	Commit     string
-	BuildDate  string
-	SourceDir  string
-	RepoSlug   string
+	DB            *pgxpool.Pool
+	Token         *auth.TokenManager
+	Hub           *ws.Hub
+	NodeClient    func(nodeID int64) (*daemonclient.Client, error)
+	EncryptionKey string
+	Commit        string
+	BuildDate     string
+	SourceDir     string
+	RepoSlug      string
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -42,7 +43,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	}))
 
 	authHandler := &handlers.AuthHandler{DB: deps.DB, Token: deps.Token}
-	nodeHandler := &handlers.NodeHandler{DB: deps.DB}
+	nodeHandler := &handlers.NodeHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey}
 	serverHandler := &handlers.ServerHandler{DB: deps.DB, NodeClient: deps.NodeClient}
 	versionHandler := &handlers.VersionHandler{
 		Commit:    deps.Commit,

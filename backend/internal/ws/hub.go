@@ -1,13 +1,17 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+
+	"github.com/yourorg/panel/internal/models"
 )
 
 var upgrader = websocket.Upgrader{
@@ -17,12 +21,18 @@ var upgrader = websocket.Upgrader{
 }
 
 type Hub struct {
-	mu    sync.RWMutex
-	rooms map[uuid.UUID]map[*websocket.Conn]struct{}
+	mu      sync.RWMutex
+	rooms   map[uuid.UUID]map[*websocket.Conn]struct{}
+	pollers map[uuid.UUID]context.CancelFunc
+
+	FetchStats func(ctx context.Context, serverUUID uuid.UUID) (*models.ResourceStats, error)
 }
 
 func NewHub() *Hub {
-	return &Hub{rooms: make(map[uuid.UUID]map[*websocket.Conn]struct{})}
+	return &Hub{
+		rooms:   make(map[uuid.UUID]map[*websocket.Conn]struct{}),
+		pollers: make(map[uuid.UUID]context.CancelFunc),
+	}
 }
 
 func (h *Hub) ServeServerSocket(w http.ResponseWriter, r *http.Request, serverUUID uuid.UUID) {
@@ -65,7 +75,14 @@ func (h *Hub) subscribe(serverUUID uuid.UUID, conn *websocket.Conn) {
 	if h.rooms[serverUUID] == nil {
 		h.rooms[serverUUID] = make(map[*websocket.Conn]struct{})
 	}
+	firstSubscriber := len(h.rooms[serverUUID]) == 0
 	h.rooms[serverUUID][conn] = struct{}{}
+
+	if firstSubscriber && h.FetchStats != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		h.pollers[serverUUID] = cancel
+		go h.pollStats(ctx, serverUUID)
+	}
 }
 
 func (h *Hub) unsubscribe(serverUUID uuid.UUID, conn *websocket.Conn) {
@@ -74,5 +91,27 @@ func (h *Hub) unsubscribe(serverUUID uuid.UUID, conn *websocket.Conn) {
 	delete(h.rooms[serverUUID], conn)
 	if len(h.rooms[serverUUID]) == 0 {
 		delete(h.rooms, serverUUID)
+		if cancel, ok := h.pollers[serverUUID]; ok {
+			cancel()
+			delete(h.pollers, serverUUID)
+		}
+	}
+}
+
+func (h *Hub) pollStats(ctx context.Context, serverUUID uuid.UUID) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			stats, err := h.FetchStats(ctx, serverUUID)
+			if err != nil {
+				continue
+			}
+			h.Broadcast(serverUUID, stats)
+		}
 	}
 }

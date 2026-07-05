@@ -9,20 +9,54 @@ plan changes; treat it as append/edit, not write-once.
 
 Pages wired into `App.tsx`'s sidebar: **Servers** (dashboard, `pages/Dashboard.tsx`
 + `components/ServerList.tsx`), **Nodes** (`pages/Nodes.tsx`), **Settings**
-(`pages/Settings.tsx` — version + update check). **Activity** is a static,
-unwired nav item — placeholder for the next page to build.
+(`pages/Settings.tsx` — version + update check). Clicking "Manage" on a
+server card now goes somewhere: **`pages/ServerView.tsx`**, tab-bar with
+Overview/Console/Files/Databases/Schedules — only Overview is real (power
+buttons + live CPU/RAM/Disk meters), the other four are honest "not
+implemented yet" panels, not fake UI. **Activity** is still a static,
+unwired nav item.
 
 Backend REST surface: auth (login/me), nodes (list/create, admin-gated),
-servers (list/get/power), version (get/check-update), WS gateway for
-console/stats (`/ws/servers/{uuid}`, not yet driving any UI beyond the
-resource bars on server cards).
+servers (list/get/power — power is now genuinely wired end to end, see
+below), version (get/check-update), WS gateway (`/ws/servers/{uuid}`) that
+now actually relays live stats (polls the daemon every 2s while at least
+one browser is subscribed, stops when the last one leaves) — console
+relay is not built yet, only stats.
+
+**Power actions and live stats are real now, not stubbed.** The chain that
+makes this work: `NodeHandler.Create` encrypts the raw daemon token
+(AES-256-GCM, key = SHA-256 of `PANEL_ENCRYPTION_KEY`, see
+`internal/crypto/aesgcm.go`) into `nodes.daemon_token_encrypted` alongside
+the existing bcrypt hash (hash stays for future daemon-side auth
+verification if that direction is ever added; encrypted copy is what lets
+the *panel* re-authenticate outbound to wingsd). `cmd/panel/main.go`'s
+`nodeClientResolver` decrypts it per-call and builds a real
+`daemonclient.Client`. `daemon/internal/api/handlers.go` grew a
+`GET /servers/{uuid}/stats` endpoint (CPU % computed from the standard
+cpu-delta/system-delta/online-cpus formula, docker one-shot stats mode).
+`ws.Hub` grew a lazy per-server poller (`FetchStats` callback + a
+`pollers map[uuid.UUID]context.CancelFunc`) instead of a global ticker
+over every server, so idle servers cost nothing.
+
+**Migrations are now a real numbered system**, not a single re-run file.
+`backend/migrations/000N_*.sql`, tracked in a `schema_migrations` table,
+applied via `scripts/database.sh`'s `apply_migrations` — called both from
+fresh installs (`provision_database`) and from `write_panel_env`/`run_update`
+on existing installs (previously, `write_panel_env` returned immediately
+if `panel.env` already existed, which meant **schema changes silently
+never reached already-installed panels** — caught this while adding
+migration `0002`, backfilled a bootstrap check so existing databases with
+the old single-file schema and no `schema_migrations` row get `0001`
+marked as already-applied instead of the migration runner trying to
+`CREATE TABLE users` again and failing).
 
 Installer (`install.sh` + `scripts/*.sh`): language select (EN/RU with
 real explanations, not just translated strings), Docker/Postgres/Redis
 provisioning, domain + Let's Encrypt, interactive admin bootstrap, node
 install with a non-interactive fast path (`WINGSD_DAEMON_TOKEN=... bash
-<(curl ...)`), update mechanism (`PANEL_UPDATE=1 ./install.sh`), full
-destructive uninstall gated behind typing `DELETE`.
+<(curl ...)`), update mechanism (`PANEL_UPDATE=1 ./install.sh`, now also
+runs `apply_migrations`), full destructive uninstall gated behind typing
+`DELETE`.
 
 ## Design conventions — follow these before inventing new patterns
 
@@ -73,41 +107,73 @@ destructive uninstall gated behind typing `DELETE`.
    main.buildDate=...` into `cmd/panel`. If another binary ever needs to
    report its own version (wingsd, for instance), wire it the same way
    rather than inventing a second mechanism.
+8. **Secrets that the panel needs to use later (not just verify) get
+   encrypted, not hashed.** `daemon_token_hash` (bcrypt) proves someone
+   presented the right token; it can never answer "what was the token" —
+   that's what `daemon_token_encrypted` (AES-GCM via `internal/crypto`,
+   keyed off `PANEL_ENCRYPTION_KEY`) is for. Before adding another secret
+   column, ask which of these two questions the code actually needs
+   answered later.
+9. **Any new SQL schema change is a new numbered file in
+   `backend/migrations/`, never an edit to `0001_init.sql`.** The migration
+   runner tracks applied files in `schema_migrations`; editing an old file
+   in place means already-deployed panels never see the change (they've
+   already recorded that filename as applied). Bump the number instead.
+10. **Live per-server data (stats now, console later) is relayed lazily.**
+    `ws.Hub` only starts polling/streaming a server once a browser
+    subscribes to `/ws/servers/{uuid}`, and stops the moment the last one
+    disconnects (see `pollers map[uuid.UUID]context.CancelFunc` in
+    `internal/ws/hub.go`). Don't build a global "poll every server every
+    N seconds" loop — most servers have nobody watching at any given
+    moment, and that's needless load on every node for no benefit.
 
 ## Roadmap — rough priority order
 
-### Near-term (obvious next pages, CSS already exists and is unused)
-- **Per-server view** (click "Manage" on a server card — `onManage` already
-  wired in `ServerCard`/`Dashboard`/`App`, but there's no destination yet).
-  panel.css has a full tab-bar design for this: `.tab-bar`/`.tab-btn` +
-  `.tab-panel`, with dedicated sections already styled — Console
-  (`.console-wrap`, xterm-like output, wire to `/ws/servers/{uuid}` which
-  the backend hub already relays), Files (`.files-table`, needs the daemon's
-  file-manager RPCs — not implemented on wingsd yet, see docs/PROTOCOL.md
-  §2 "File manager"), Databases (`.db-table`, backend has `server_databases`
-  table but no handler), Schedules (`.sch-list`/`.sch-card`/`.toggle-sw`,
-  backend has `server_schedules`/`schedule_tasks` tables but no handler
-  or cron runner).
+### Near-term (Server Detail's remaining tabs — Overview is done)
+- **Console tab** — the obvious next one; unlike when this was first written,
+  the hard part (real daemon auth) is already solved, so this is now mostly
+  plumbing: dial the daemon's `/ws/servers/{uuid}` from the panel (using the
+  same `nodeClientResolver` decrypted token, over WS instead of HTTP),
+  relay daemon->browser lines into `ws.Hub.Broadcast` and browser->daemon
+  keystrokes back, using the same lazy-subscribe/cancel-on-empty pattern
+  the stats poller already established. `console.Hub.Serve` on the daemon
+  side already does exactly the send/receive shape needed; nothing new
+  required there.
+- **Files tab** — needs daemon file-manager RPCs first (list/read/write/
+  delete/rename over HTTP or the proto's streaming RPCs — see
+  docs/PROTOCOL.md §2), then the `.files-table` UI. Bigger lift than
+  Console; do Console first.
+- **Databases tab** — `server_databases` table exists, no handler. Needs a
+  decision on how DB credentials actually get provisioned (a MySQL/Postgres
+  instance per node? shared? the schema has `database_host_id` pointing at
+  a `database_hosts` table that was deliberately never created — "out of
+  scope v1" per the migration's own note).
+- **Schedules tab** — `server_schedules`/`schedule_tasks` tables exist, no
+  handler, no cron runner. The runner is the real work here (some process
+  needs to wake up and check `cron_minute`/`cron_hour`/etc against wall
+  clock and fire `schedule_tasks` in `sequence_id` order) — the UI is the
+  easy 10%.
 - **Activity page** — the sidebar nav item already exists and does nothing.
   panel.css has `.act-table`/`.act-row` ready. Backend has an
   `activity_logs` table but nothing writes to it yet — writing activity
   log rows needs to happen at the point of action (login, power actions,
-  node creation), not as an afterthought bolted onto the table later.
+  node creation), not as an afterthought bolted onto the table later. Do
+  this alongside Console/whatever's next, since power actions are exactly
+  the kind of event this table is for and it's cheap to add a row at the
+  same call site while already touching it.
 - **Account page** — `.acc-grid`/`.acc-card`, `.api-list`/`.api-item` (API
   keys — backend `api_keys` table exists, no handler), `.twofa-card` (2FA —
   `users.totp_secret`/`totp_enabled` columns exist, unused).
 
 ### Mid-term (real functionality gaps, not just missing UI)
-- Wire the daemon's actual `CreateServer`/`Power` flow end to end: right
-  now `ServerHandler` calls `NodeClient(nodeID)`, but `cmd/panel/main.go`'s
-  `NodeClient` resolver is a stub that always errors — there's no
-  create-server flow in the UI at all yet (no "Add Server" button anywhere,
-  no egg/template picker). This is the single biggest gap between "looks
-  like Pterodactyl" and "works like Pterodactyl."
-  - Bootstrap resolving nodeID -> daemonclient.Client needs a secrets store
-    decision (see `docs/ARCHITECTURE.md` security section) before it can be
-    wired for real — don't just inline the raw token in Postgres next to
-    its own bcrypt hash defeats the point of hashing it.
+- There's still no create-server flow in the UI at all (no "Add Server"
+  button anywhere, no egg/template picker) — `ServerHandler.Create` doesn't
+  even exist yet, only List/Get/Power. This is now the single biggest gap
+  between "looks like Pterodactyl" and "works like Pterodactyl", now that
+  Power/stats are real. Needs: an egg picker (reads from the `eggs` table,
+  which has zero seed data right now — nothing inserts eggs), an allocation
+  picker (free rows in `allocations`), and a call into
+  `daemonclient.Client.CreateServer` (already exists, unused by any handler).
 - RBAC is currently binary (`is_admin` or nothing) — `auth.PermissionChecker`
   interface exists in `backend/internal/auth/rbac.go` but has zero
   implementations wired into the router. `server_subusers` table exists
@@ -143,3 +209,11 @@ destructive uninstall gated behind typing `DELETE`.
   next to it (i.e. running via `bash <(curl ...)` with nothing checked out
   locally) — don't add prompts before that check runs, they'd never be
   reached in the one-liner case since the script re-execs itself immediately.
+- Any "if the env/config file already exists, skip everything" guard
+  (`write_panel_env`'s original shape) is a trap for anything that needs to
+  run on *every* install, not just the first one — found this the hard way
+  with migrations: they were silently skipped on every update because they
+  were bolted onto the same early-return as secret generation. When adding
+  a new "only do this once" step, ask separately "does this specific piece
+  need to happen once, or every time" — don't assume the whole function is
+  one atomic once-only unit.

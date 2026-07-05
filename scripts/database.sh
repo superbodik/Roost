@@ -72,17 +72,56 @@ provision_database() {
 	fi
 	log_ok "Database role and database ready (${DB_USER}@${DB_NAME})"
 
-	local migration="${PROJECT_ROOT}/backend/migrations/0001_init.sql"
-	if [[ -f "$migration" ]]; then
-		PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -f "$migration" \
-			|| die "Failed to apply migration $migration"
-		log_ok "Applied migration: $(basename "$migration")"
-	else
-		log_warn "Migration file not found at $migration — skipping schema load"
-	fi
+	apply_migrations "$db_password"
 
 	PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 \
 		-c "INSERT INTO locations (short_code, description) VALUES ('default', 'Default location') ON CONFLICT (short_code) DO NOTHING;" \
 		|| die "Failed to seed default location"
 	log_ok "Seeded default location ('default')"
+}
+
+apply_migrations() {
+	local db_password="$1"
+	local migrations_dir="${PROJECT_ROOT}/backend/migrations"
+
+	if [[ ! -d "$migrations_dir" ]]; then
+		log_warn "No migrations directory at $migrations_dir — skipping"
+		return
+	fi
+
+	PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 \
+		-c "CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now());" \
+		|| die "Failed to create schema_migrations table"
+
+	local tracked_count
+	tracked_count=$(PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT count(*) FROM schema_migrations")
+	if [[ "$tracked_count" == "0" ]]; then
+		local users_table_exists
+		users_table_exists=$(PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" \
+			-tAc "SELECT 1 FROM information_schema.tables WHERE table_name='users'")
+		if [[ "$users_table_exists" == "1" ]]; then
+			log_warn "Existing schema found with no migration history — marking 0001_init.sql as already applied instead of re-running it"
+			PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" \
+				-c "INSERT INTO schema_migrations (id) VALUES ('0001_init.sql') ON CONFLICT DO NOTHING;"
+		fi
+	fi
+
+	local file name already_applied
+	for file in "$migrations_dir"/*.sql; do
+		[[ -f "$file" ]] || continue
+		name=$(basename "$file")
+		already_applied=$(PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" \
+			-tAc "SELECT 1 FROM schema_migrations WHERE id='${name}'")
+		if [[ "$already_applied" == "1" ]]; then
+			continue
+		fi
+
+		log_step "Applying migration: ${name}"
+		PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file" \
+			|| die "Failed to apply migration $name"
+		PGPASSWORD="$db_password" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 \
+			-c "INSERT INTO schema_migrations (id) VALUES ('${name}');" \
+			|| die "Applied $name but failed to record it in schema_migrations"
+		log_ok "Applied ${name}"
+	done
 }

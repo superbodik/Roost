@@ -76,6 +76,26 @@ func (c *Client) DeleteServer(ctx context.Context, serverUUID uuid.UUID) error {
 	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
 }
 
+type ResourceStats struct {
+	ServerUUID    uuid.UUID `json:"server_uuid"`
+	CPUPercent    float64   `json:"cpu_percent"`
+	MemoryBytes   int64     `json:"memory_bytes"`
+	DiskBytes     int64     `json:"disk_bytes"`
+	NetworkRx     int64     `json:"network_rx"`
+	NetworkTx     int64     `json:"network_tx"`
+	UptimeSeconds int64     `json:"uptime_seconds"`
+	State         string    `json:"state"`
+}
+
+func (c *Client) Stats(ctx context.Context, serverUUID uuid.UUID) (*ResourceStats, error) {
+	var resp ResourceStats
+	path := fmt.Sprintf("/api/v1/servers/%s/stats", serverUUID)
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (c *Client) doJSON(ctx context.Context, method, path string, body, out interface{}) error {
 	var reader *bytes.Reader
 	if body != nil {

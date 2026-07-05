@@ -125,6 +125,66 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type resourceStatsResponse struct {
+	ServerUUID    uuid.UUID `json:"server_uuid"`
+	CPUPercent    float64   `json:"cpu_percent"`
+	MemoryBytes   int64     `json:"memory_bytes"`
+	DiskBytes     int64     `json:"disk_bytes"`
+	NetworkRx     int64     `json:"network_rx"`
+	NetworkTx     int64     `json:"network_tx"`
+	UptimeSeconds int64     `json:"uptime_seconds"`
+	State         string    `json:"state"`
+}
+
+func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
+	serverUUID, err := uuid.Parse(chi.URLParam(r, "uuid"))
+	if err != nil {
+		http.Error(w, "invalid server uuid", http.StatusBadRequest)
+		return
+	}
+	containerID := docker.ContainerNameFor(serverUUID)
+	ctx := r.Context()
+
+	stats, err := h.Docker.Stats(ctx, containerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	state, err := h.Docker.InspectState(ctx, containerID)
+	if err != nil {
+		state = "offline"
+	}
+
+	var networkRx, networkTx int64
+	for _, iface := range stats.Networks {
+		networkRx += int64(iface.RxBytes)
+		networkTx += int64(iface.TxBytes)
+	}
+
+	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage) - float64(stats.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(stats.CPUStats.SystemUsage) - float64(stats.PreCPUStats.SystemUsage)
+	var cpuPercent float64
+	if systemDelta > 0 && cpuDelta > 0 {
+		onlineCPUs := float64(stats.CPUStats.OnlineCPUs)
+		if onlineCPUs == 0 {
+			onlineCPUs = float64(len(stats.CPUStats.CPUUsage.PercpuUsage))
+		}
+		if onlineCPUs == 0 {
+			onlineCPUs = 1
+		}
+		cpuPercent = (cpuDelta / systemDelta) * onlineCPUs * 100
+	}
+
+	writeJSON(w, http.StatusOK, resourceStatsResponse{
+		ServerUUID:  serverUUID,
+		CPUPercent:  cpuPercent,
+		MemoryBytes: int64(stats.MemoryStats.Usage),
+		NetworkRx:   networkRx,
+		NetworkTx:   networkTx,
+		State:       state,
+	})
+}
+
 func (h *Handlers) ConsoleSocket(w http.ResponseWriter, r *http.Request) {
 	serverUUID, err := uuid.Parse(chi.URLParam(r, "uuid"))
 	if err != nil {

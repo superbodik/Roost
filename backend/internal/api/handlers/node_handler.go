@@ -9,20 +9,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourorg/panel/internal/auth"
+	"github.com/yourorg/panel/internal/crypto"
 )
 
 type NodeHandler struct {
-	DB *pgxpool.Pool
+	DB            *pgxpool.Pool
+	EncryptionKey string
 }
 
 type createNodeRequest struct {
-	Name               string `json:"name"`
-	LocationID         int    `json:"location_id"`
-	FQDN               string `json:"fqdn"`
-	Scheme             string `json:"scheme"`
-	DaemonPort         int    `json:"daemon_port"`
-	MemoryMB           int64  `json:"memory_mb"`
-	DiskMB             int64  `json:"disk_mb"`
+	Name       string `json:"name"`
+	LocationID int    `json:"location_id"`
+	FQDN       string `json:"fqdn"`
+	Scheme     string `json:"scheme"`
+	DaemonPort int    `json:"daemon_port"`
+	MemoryMB   int64  `json:"memory_mb"`
+	DiskMB     int64  `json:"disk_mb"`
 }
 
 type createNodeResponse struct {
@@ -53,15 +55,20 @@ func (h *NodeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to hash token", http.StatusInternalServerError)
 		return
 	}
+	tokenEncrypted, err := crypto.Encrypt(h.EncryptionKey, rawToken)
+	if err != nil {
+		http.Error(w, "failed to encrypt token", http.StatusInternalServerError)
+		return
+	}
 
 	var id int64
 	err = h.DB.QueryRow(r.Context(), `
 		INSERT INTO nodes (name, location_id, fqdn, scheme, daemon_port,
-		                    daemon_token_hash, memory_mb, disk_mb)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		                    daemon_token_hash, daemon_token_encrypted, memory_mb, disk_mb)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`,
 		req.Name, req.LocationID, req.FQDN, req.Scheme, req.DaemonPort,
-		tokenHash, req.MemoryMB, req.DiskMB,
+		tokenHash, tokenEncrypted, req.MemoryMB, req.DiskMB,
 	).Scan(&id)
 	if err != nil {
 		http.Error(w, "failed to create node", http.StatusInternalServerError)

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Nodes } from './pages/Nodes';
+import { ServerView } from './pages/ServerView';
 import { Settings } from './pages/Settings';
 
 interface StoredUser {
@@ -62,7 +63,7 @@ export function App() {
           {activeServer && (
             <>
               <span className="bc-sep">/</span>
-              <span className="bc-cur">{activeServer}</span>
+              <span className="bc-cur">{activeServer.slice(0, 8)}</span>
             </>
           )}
         </nav>
@@ -111,7 +112,9 @@ export function App() {
         </aside>
 
         <main className="main">
-          {view === 'nodes' ? (
+          {activeServer ? (
+            <ServerView uuid={activeServer} onBack={() => setActiveServer(null)} />
+          ) : view === 'nodes' ? (
             <Nodes />
           ) : view === 'settings' ? (
             <Settings />

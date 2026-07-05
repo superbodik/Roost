@@ -1,0 +1,189 @@
+import { useEffect, useState } from 'react';
+import { api, connectServerSocket } from '../api/client';
+import type { PowerAction, ResourceStats, Server } from '../types';
+
+interface Props {
+  uuid: string;
+  onBack: () => void;
+}
+
+type Tab = 'overview' | 'console' | 'files' | 'databases' | 'schedules';
+
+function pct(used: number, limitMB: number): number {
+  const limitBytes = limitMB * 1024 * 1024;
+  if (!limitBytes) return 0;
+  return Math.min(100, Math.round((used / limitBytes) * 100));
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`;
+}
+
+export function ServerView({ uuid, onBack }: Props) {
+  const [server, setServer] = useState<Server | null>(null);
+  const [live, setLive] = useState<ResourceStats | null>(null);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getServer(uuid)
+      .then(setServer)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [uuid]);
+
+  useEffect(() => {
+    const ws = connectServerSocket(uuid);
+    ws.onmessage = (event) => {
+      try {
+        setLive(JSON.parse(event.data) as ResourceStats);
+      } catch {}
+    };
+    return () => ws.close();
+  }, [uuid]);
+
+  async function handlePower(action: PowerAction) {
+    try {
+      await api.power(uuid, action);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (error) return <div className="login-error show">{error}</div>;
+  if (!server) return <p className="srv-desc">Loading…</p>;
+
+  const cpuPct = live ? Math.min(100, Math.round(live.cpu_percent)) : 0;
+  const memPct = live ? pct(live.memory_bytes, server.memory_mb) : 0;
+  const diskPct = live ? pct(live.disk_bytes, server.disk_mb) : 0;
+
+  return (
+    <div className="view active">
+      <div className="server-head">
+        <span className="bc-sep" onClick={onBack} style={{ cursor: 'pointer' }}>
+          ← Back
+        </span>
+        <h1 style={{ marginTop: 8 }}>{server.name}</h1>
+        <p>
+          {server.uuid_short} · {server.docker_image}
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ width: 220, flexShrink: 0 }}>
+          <div className="power-grid">
+            <button className="power-btn start" onClick={() => handlePower('start')}>
+              Start
+            </button>
+            <button className="power-btn stop" onClick={() => handlePower('stop')}>
+              Stop
+            </button>
+            <button className="power-btn" onClick={() => handlePower('restart')}>
+              Restart
+            </button>
+            <button className="power-btn kill" onClick={() => handlePower('kill')}>
+              Kill
+            </button>
+          </div>
+
+          <div className="res-list">
+            <div className="res-item">
+              <div className="res-head">
+                <span>CPU</span>
+                <span className="res-val">{live ? `${cpuPct}%` : '—'}</span>
+              </div>
+              <div className="res-bar">
+                <div className="res-bar-fill" style={{ width: `${cpuPct}%` }} />
+              </div>
+            </div>
+            <div className="res-item">
+              <div className="res-head">
+                <span>RAM</span>
+                <span className="res-val">{live ? formatBytes(live.memory_bytes) : '—'}</span>
+              </div>
+              <div className="res-bar">
+                <div className="res-bar-fill" style={{ width: `${memPct}%` }} />
+              </div>
+            </div>
+            <div className="res-item">
+              <div className="res-head">
+                <span>Disk</span>
+                <span className="res-val">{live ? formatBytes(live.disk_bytes) : '—'}</span>
+              </div>
+              <div className="res-bar">
+                <div className="res-bar-fill" style={{ width: `${diskPct}%` }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="tab-bar">
+            {(['overview', 'console', 'files', 'databases', 'schedules'] as Tab[]).map((t) => (
+              <div
+                key={t}
+                className={`tab-btn ${tab === t ? 'active' : ''}`}
+                onClick={() => setTab(t)}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </div>
+            ))}
+          </div>
+
+          <div className={`tab-panel ${tab === 'overview' ? 'active' : ''}`}>
+            <div className="settings-card">
+              <div className="settings-card-title">Server info</div>
+              <div className="settings-grid">
+                <div className="sfield">
+                  <label>Status</label>
+                  <input readOnly value={live?.state ?? server.status} />
+                </div>
+                <div className="sfield">
+                  <label>Startup command</label>
+                  <input readOnly value={server.startup_command} />
+                </div>
+                <div className="sfield">
+                  <label>Memory limit</label>
+                  <input readOnly value={`${server.memory_mb} MB`} />
+                </div>
+                <div className="sfield">
+                  <label>Disk limit</label>
+                  <input readOnly value={`${server.disk_mb} MB`} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={`tab-panel ${tab === 'console' ? 'active' : ''}`}>
+            <p className="srv-desc">
+              Console streaming isn't wired up yet — the daemon can stream container logs, but
+              the panel doesn't relay them to the browser here yet. See add.md.
+            </p>
+          </div>
+
+          <div className={`tab-panel ${tab === 'files' ? 'active' : ''}`}>
+            <p className="srv-desc">
+              File manager isn't implemented yet — wingsd has no file-manager RPCs. See add.md.
+            </p>
+          </div>
+
+          <div className={`tab-panel ${tab === 'databases' ? 'active' : ''}`}>
+            <p className="srv-desc">
+              Server databases aren't implemented yet — the schema exists
+              (server_databases), no handler yet. See add.md.
+            </p>
+          </div>
+
+          <div className={`tab-panel ${tab === 'schedules' ? 'active' : ''}`}>
+            <p className="srv-desc">
+              Schedules aren't implemented yet — the schema exists (server_schedules,
+              schedule_tasks), no cron runner yet. See add.md.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
