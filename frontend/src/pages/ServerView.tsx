@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, connectConsoleSocket, connectServerSocket } from '../api/client';
+import { FileManager } from '../components/FileManager';
 import type { PowerAction, ResourceStats, Server } from '../types';
 
 interface Props {
@@ -250,9 +251,7 @@ export function ServerView({ uuid, onBack }: Props) {
           </div>
 
           <div className={`tab-panel ${tab === 'files' ? 'active' : ''}`}>
-            <p className="srv-desc">
-              File manager isn't implemented yet — wingsd has no file-manager RPCs. See add.md.
-            </p>
+            {tab === 'files' && <FileManager uuid={uuid} />}
           </div>
 
           <div className={`tab-panel ${tab === 'databases' ? 'active' : ''}`}>

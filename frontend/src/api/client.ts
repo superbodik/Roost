@@ -8,6 +8,7 @@ import type {
   CreateNodeResponse,
   CreateServerRequest,
   Egg,
+  FileEntry,
   Node,
   PowerAction,
   Server,
@@ -92,6 +93,29 @@ async function request<T>(path: string, init?: RequestInit, isRetry = false): Pr
   return (await res.json()) as T;
 }
 
+async function requestText(path: string, init?: RequestInit, isRetry = false): Promise<string> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...authHeaders(),
+      ...init?.headers,
+    },
+  });
+
+  if (res.status === 401) {
+    if (!isRetry && (await tryRefresh())) {
+      return requestText(path, init, true);
+    }
+    clearTokens();
+    window.location.reload();
+    throw new Error('session expired');
+  }
+  if (!res.ok) {
+    throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}`);
+  }
+  return res.text();
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<AuthTokens>('/auth/login', {
@@ -145,6 +169,33 @@ export const api = {
     }),
 
   deleteApiKey: (id: number) => request<void>(`/account/api-keys/${id}`, { method: 'DELETE' }),
+
+  listFiles: (uuid: string, path: string) =>
+    request<FileEntry[]>(`/servers/${uuid}/files?path=${encodeURIComponent(path)}`),
+
+  readFile: (uuid: string, path: string) =>
+    requestText(`/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`),
+
+  writeFile: (uuid: string, path: string, content: string) =>
+    requestText(`/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/plain' },
+      body: content,
+    }),
+
+  deleteFile: (uuid: string, path: string) =>
+    request<void>(`/servers/${uuid}/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+
+  createDirectory: (uuid: string, path: string) =>
+    request<void>(`/servers/${uuid}/files/directory?path=${encodeURIComponent(path)}`, {
+      method: 'POST',
+    }),
+
+  renameFile: (uuid: string, from: string, to: string) =>
+    request<void>(`/servers/${uuid}/files/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    }),
 };
 
 export { storeTokens, clearTokens };

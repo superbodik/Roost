@@ -155,3 +155,11 @@ export interface CreateApiKeyResponse {
   name: string;
   token: string;
 }
+
+export interface FileEntry {
+  name: string;
+  is_directory: boolean;
+  size_bytes: number;
+  modified_at: number;
+  mode: string;
+}

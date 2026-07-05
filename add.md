@@ -18,9 +18,10 @@ now also manages **Allocations** per node), **Activity**
 by clicking the user chip in the topbar). Clicking "Manage" on a server
 card goes to **`pages/ServerView.tsx`**, tab-bar with
 Overview/Console/Files/Databases/Schedules — Overview (power buttons +
-live CPU/RAM/Disk meters) and Console (real, bidirectional) are wired;
-Files/Databases/Schedules are honest "not implemented yet" panels, not
-fake UI.
+live CPU/RAM/Disk meters), Console (real, bidirectional), and now **Files**
+(`components/FileManager.tsx` — browse/edit/delete/create-folder, real
+filesystem operations on the node) are wired; Databases/Schedules are
+still honest "not implemented yet" panels, not fake UI.
 
 Backend REST surface: auth (login/me), nodes (list/create, admin-gated),
 servers (list/get/power — power is now genuinely wired end to end, see
@@ -120,6 +121,28 @@ WS auth (`authenticateWS`) deliberately was **not** extended to accept
 API keys — those are for programmatic REST clients, not the browser SPA,
 and `tm.Parse` on a `panel_...` string just fails as not-a-JWT, which is
 the correct behavior there.
+
+**Files tab does real filesystem operations on the node**, not a mock.
+New daemon package `internal/files` operates directly on the host bind-mount
+directory (`docker.Manager.ServerVolumePath`, now exported) rather than
+exec'ing into the container — same approach Wings itself uses, and it
+means files are readable/writable even while the container is stopped.
+`files.SafeJoin` is the one function every operation goes through: it
+`Clean`s the requested path as if rooted at `/`, joins it under the
+server's data directory, then double-checks via `filepath.Rel` that the
+result didn't escape via `..` — verified against `../../../etc/passwd`-
+style inputs before wiring it up (see convention 15 below). `Delete`/
+`Write`/`Rename` also explicitly refuse to touch the server root itself.
+Wire-through: daemon HTTP endpoints (`/servers/{uuid}/files*`) → new
+`daemonclient` methods (`ListFiles`/`ReadFile`/`WriteFile`/`DeleteFile`/
+`CreateDirectory`/`RenameFile`) → backend `FileHandler` (owner-or-admin
+check, same pattern as `ServerHandler.Delete`) → frontend
+`FileManager.tsx` (breadcrumb path nav + `.files-table` listing + a plain
+`<textarea>` editor — no syntax highlighting, this isn't a code editor,
+just enough to fix a config file without SSH). `CreateContainer` now also
+`os.MkdirAll`s the server's volume path before creating the container,
+since it needs to exist for the Files tab to have something to list even
+before the first daemon-side install step runs.
 
 **Server deletion is wired end to end**: `ServerHandler.Delete` checks
 owner-or-admin, calls the daemon's `DeleteServer`, then deletes the row
@@ -233,14 +256,29 @@ building one wasn't justified).
     allocation automatically. Don't insert-then-call-then-cleanup-on-error
     manually — the deferred rollback pattern is shorter and can't leak a
     half-created row if a future code path adds an early return.
+15. **Any path that comes from a client and touches the filesystem goes
+    through `files.SafeJoin` first, no exceptions.** It normalizes the
+    requested path as if rooted at `/` (so `Clean` collapses `../` before
+    it ever gets joined to the real base directory), joins it under the
+    server's data dir, then re-verifies with `filepath.Rel` that nothing
+    escaped. Verified against `../../../etc/passwd`-style inputs by hand
+    before wiring it into any handler — do the same sanity check again if
+    this function is ever touched, since it's the entire security boundary
+    between "browser typed a path" and "daemon process root-owns the
+    host's real filesystem."
 
 ## Roadmap — rough priority order
 
-### Near-term (Server Detail's remaining tabs — Overview + Console are done)
-- **Files tab** — needs daemon file-manager RPCs first (list/read/write/
-  delete/rename over HTTP or the proto's streaming RPCs — see
-  docs/PROTOCOL.md §2), then the `.files-table` UI. Biggest remaining lift
-  in Server Detail.
+### Near-term (Server Detail's remaining tabs — Overview + Console + Files are done)
+- **Files tab follow-ups** — no file upload (only create/edit/delete/mkdir;
+  no drag-and-drop or multipart upload endpoint), no rename UI (the
+  backend/daemon `RenameFile` plumbing exists end to end, just nothing in
+  `FileManager.tsx` calls it yet), and `ReadFile`/`WriteFile` load the
+  whole file into memory both in the daemon and the panel — fine for
+  config files, would need streaming for anything large (logs, world
+  saves). Also no binary-file handling — the `<textarea>` editor assumes
+  text; opening a binary file will show garbage rather than refusing
+  cleanly.
 - **Databases tab** — `server_databases` table exists, no handler. Needs a
   decision on how DB credentials actually get provisioned (a MySQL/Postgres
   instance per node? shared? the schema has `database_host_id` pointing at

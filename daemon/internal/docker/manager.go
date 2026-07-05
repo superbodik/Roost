@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -51,9 +52,17 @@ func (m *Manager) serverVolumePath(serverUUID uuid.UUID) string {
 	return filepath.Join(m.dataDir, serverUUID.String())
 }
 
+func (m *Manager) ServerVolumePath(serverUUID uuid.UUID) string {
+	return m.serverVolumePath(serverUUID)
+}
+
 func (m *Manager) CreateContainer(ctx context.Context, spec CreateSpec) (string, error) {
 	if err := m.ensureImage(ctx, spec.DockerImage); err != nil {
 		return "", err
+	}
+
+	if err := os.MkdirAll(m.serverVolumePath(spec.ServerUUID), 0755); err != nil {
+		return "", fmt.Errorf("create server data directory: %w", err)
 	}
 
 	env := make([]string, 0, len(spec.Environment))

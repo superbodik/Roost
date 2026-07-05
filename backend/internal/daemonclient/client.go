@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -97,6 +99,79 @@ func (c *Client) Stats(ctx context.Context, serverUUID uuid.UUID) (*ResourceStat
 		return nil, err
 	}
 	return &resp, nil
+}
+
+type FileEntry struct {
+	Name        string `json:"name"`
+	IsDirectory bool   `json:"is_directory"`
+	SizeBytes   int64  `json:"size_bytes"`
+	ModifiedAt  int64  `json:"modified_at"`
+	Mode        string `json:"mode"`
+}
+
+func (c *Client) ListFiles(ctx context.Context, serverUUID uuid.UUID, path string) ([]FileEntry, error) {
+	var entries []FileEntry
+	p := fmt.Sprintf("/api/v1/servers/%s/files?path=%s", serverUUID, url.QueryEscape(path))
+	if err := c.doJSON(ctx, http.MethodGet, p, nil, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func (c *Client) ReadFile(ctx context.Context, serverUUID uuid.UUID, path string) ([]byte, error) {
+	p := fmt.Sprintf("/api/v1/servers/%s/files/contents?path=%s", serverUUID, url.QueryEscape(path))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+p, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.daemonToken)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("call node daemon: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("node daemon returned %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+func (c *Client) WriteFile(ctx context.Context, serverUUID uuid.UUID, path string, content []byte) error {
+	p := fmt.Sprintf("/api/v1/servers/%s/files/contents?path=%s", serverUUID, url.QueryEscape(path))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+p, bytes.NewReader(content))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.daemonToken)
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("call node daemon: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("node daemon returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) DeleteFile(ctx context.Context, serverUUID uuid.UUID, path string) error {
+	p := fmt.Sprintf("/api/v1/servers/%s/files?path=%s", serverUUID, url.QueryEscape(path))
+	return c.doJSON(ctx, http.MethodDelete, p, nil, nil)
+}
+
+func (c *Client) CreateDirectory(ctx context.Context, serverUUID uuid.UUID, path string) error {
+	p := fmt.Sprintf("/api/v1/servers/%s/files/directory?path=%s", serverUUID, url.QueryEscape(path))
+	return c.doJSON(ctx, http.MethodPost, p, nil, nil)
+}
+
+func (c *Client) RenameFile(ctx context.Context, serverUUID uuid.UUID, from, to string) error {
+	p := fmt.Sprintf("/api/v1/servers/%s/files/rename", serverUUID)
+	return c.doJSON(ctx, http.MethodPost, p, map[string]string{"from": from, "to": to}, nil)
 }
 
 func (c *Client) DialConsole(ctx context.Context, serverUUID uuid.UUID) (*websocket.Conn, error) {
