@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -f "${SCRIPT_DIR}/scripts/lib.sh" ]]; then
 	CLONE_DIR="/usr/local/src/panel"
+	cd / || exit 1
 	command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
 	rm -rf "$CLONE_DIR"
 	git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$CLONE_DIR"
