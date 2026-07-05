@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { FileEntry } from '../types';
 
@@ -21,6 +21,13 @@ function formatDate(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toLocaleString();
 }
 
+const NUL = String.fromCharCode(0);
+const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
+
+function looksBinary(content: string): boolean {
+  return content.indexOf(NUL) !== -1 || content.indexOf(REPLACEMENT_CHAR) !== -1;
+}
+
 export function FileManager({ uuid }: Props) {
   const [path, setPath] = useState('/');
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -29,6 +36,8 @@ export function FileManager({ uuid }: Props) {
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function refresh() {
     setLoading(true);
@@ -53,9 +62,14 @@ export function FileManager({ uuid }: Props) {
       setPath(joinPath(path, entry.name));
       return;
     }
+    const target = joinPath(path, entry.name);
     try {
-      const content = await api.readFile(uuid, joinPath(path, entry.name));
-      setEditingFile(joinPath(path, entry.name));
+      const content = await api.readFile(uuid, target);
+      if (looksBinary(content)) {
+        setError(`"${entry.name}" looks like a binary file — use Download instead of editing it as text.`);
+        return;
+      }
+      setEditingFile(target);
       setFileContent(content);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -84,6 +98,49 @@ export function FileManager({ uuid }: Props) {
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleRename(entry: FileEntry, e: React.MouseEvent) {
+    e.stopPropagation();
+    const newName = window.prompt('New name', entry.name);
+    if (!newName || newName === entry.name) return;
+    try {
+      await api.renameFile(uuid, joinPath(path, entry.name), joinPath(path, newName));
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleDownload(entry: FileEntry, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      const blob = await api.downloadFile(uuid, joinPath(path, entry.name));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = entry.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      await api.uploadFile(uuid, joinPath(path, file.name), file);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -147,6 +204,15 @@ export function FileManager({ uuid }: Props) {
             </span>
           ))}
         </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleUploadChange}
+        />
+        <button className="btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+          {uploading ? 'Uploading…' : 'Upload'}
+        </button>
         <button className="btn-sm primary" onClick={handleNewFolder}>
           + Folder
         </button>
@@ -181,8 +247,24 @@ export function FileManager({ uuid }: Props) {
               </span>
               <span className="file-modified">{formatDate(entry.modified_at)}</span>
               <div className="file-actions">
-                <button className="file-act-btn del" onClick={(e) => handleDelete(entry, e)}>
-                  Delete
+                {!entry.is_directory && (
+                  <button
+                    className="file-act-btn"
+                    title="Download"
+                    onClick={(e) => handleDownload(entry, e)}
+                  >
+                    ⬇
+                  </button>
+                )}
+                <button className="file-act-btn" title="Rename" onClick={(e) => handleRename(entry, e)}>
+                  ✎
+                </button>
+                <button
+                  className="file-act-btn del"
+                  title="Delete"
+                  onClick={(e) => handleDelete(entry, e)}
+                >
+                  ✕
                 </button>
               </div>
             </div>

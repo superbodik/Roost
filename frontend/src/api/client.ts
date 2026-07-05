@@ -118,6 +118,29 @@ async function requestText(path: string, init?: RequestInit, isRetry = false): P
   return res.text();
 }
 
+async function requestBlob(path: string, init?: RequestInit, isRetry = false): Promise<Blob> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...authHeaders(),
+      ...init?.headers,
+    },
+  });
+
+  if (res.status === 401) {
+    if (!isRetry && (await tryRefresh())) {
+      return requestBlob(path, init, true);
+    }
+    clearTokens();
+    window.location.reload();
+    throw new Error('session expired');
+  }
+  if (!res.ok) {
+    throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}`);
+  }
+  return res.blob();
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<AuthTokens>('/auth/login', {
@@ -197,6 +220,16 @@ export const api = {
     request<void>(`/servers/${uuid}/files/rename`, {
       method: 'POST',
       body: JSON.stringify({ from, to }),
+    }),
+
+  downloadFile: (uuid: string, path: string) =>
+    requestBlob(`/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`),
+
+  uploadFile: (uuid: string, path: string, file: File) =>
+    requestText(`/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
     }),
 
   listSchedules: (uuid: string) => request<Schedule[]>(`/servers/${uuid}/schedules`),

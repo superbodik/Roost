@@ -146,6 +146,24 @@ just enough to fix a config file without SSH). `CreateContainer` now also
 since it needs to exist for the Files tab to have something to list even
 before the first daemon-side install step runs.
 
+**Files tab now also has rename, upload, and download from the UI** —
+the backend/daemon `RenameFile` plumbing already existed end to end, it
+just needed a button (`handleRename`, `window.prompt` for the new name).
+Upload/download needed one addition: `api/client.ts` grew `uploadFile`
+(same binary-safe `PUT .../files/contents` endpoint the text editor's
+`writeFile` already used, just with `Content-Type: application/octet-stream`
+and a raw `File` body instead of a string) and `downloadFile` (a new
+`requestBlob` helper alongside `request`/`requestText`, since `fetch`'s
+`.blob()` is what lets an arbitrary-content response become a
+browser-triggered file download via `URL.createObjectURL`) — no backend
+or daemon changes needed, the existing endpoint was already binary-safe
+in both directions. Binary files are now detected before being loaded
+into the `<textarea>` editor (`looksBinary` — a NUL byte or a Unicode
+replacement character in the decoded text is treated as "not text",
+matching the daemon/backend's existing string wire format for file
+contents) and the UI tells the user to use Download instead of silently
+showing garbage.
+
 **Schedules tab has a real cron runner behind it, not just CRUD.**
 `internal/scheduler.Run` (launched via `go scheduler.Run(...)` in
 `cmd/panel/main.go`) ticks every 60s, matches `server_schedules` rows
@@ -301,15 +319,13 @@ building one wasn't justified).
 ## Roadmap — rough priority order
 
 ### Near-term (Server Detail's remaining tabs — only Databases is left)
-- **Files tab follow-ups** — no file upload (only create/edit/delete/mkdir;
-  no drag-and-drop or multipart upload endpoint), no rename UI (the
-  backend/daemon `RenameFile` plumbing exists end to end, just nothing in
-  `FileManager.tsx` calls it yet), and `ReadFile`/`WriteFile` load the
+- **Files tab follow-ups** — rename/upload/download/binary-detection are
+  done (see above). What's still missing: `ReadFile`/`WriteFile` load the
   whole file into memory both in the daemon and the panel — fine for
   config files, would need streaming for anything large (logs, world
-  saves). Also no binary-file handling — the `<textarea>` editor assumes
-  text; opening a binary file will show garbage rather than refusing
-  cleanly.
+  saves, or an uploaded file bigger than available RAM). No drag-and-drop,
+  just a plain file-picker button. No progress indicator on upload/download
+  either — fine at config-file sizes, would matter once streaming is added.
 - **Databases tab** — the last "not implemented yet" panel. `server_databases`
   table exists, no handler. Needs a decision on how DB credentials
   actually get provisioned (a MySQL/Postgres instance per node? shared?
@@ -388,6 +404,19 @@ building one wasn't justified).
   Worth remembering: "override unless empty" is the wrong default when
   wrapping someone else's Docker image; the image's own defaults are
   usually the point of using it.
+- **A four-hex-digit unicode escape typed into a `Write`/`Edit` tool call's
+  content is not guaranteed to survive as literal source text** — it can
+  get decoded into the actual raw codepoint/byte before the file hits
+  disk. Tried to write a `looksBinary()` helper this way, targeting the
+  NUL codepoint, and it corrupted the file with a real raw NUL byte
+  instead of six characters of TypeScript source (confirmed via `grep`
+  reporting "binary file matches" on what should have been a `.tsx`
+  file — and this exact bullet point corrupted this very file, `add.md`,
+  the same way on the first attempt to write it down). Fix: build the
+  character at runtime instead — `String.fromCharCode(0)` — any time a
+  control character or non-printable codepoint needs to appear literally
+  in generated source, rather than typing the escape sequence into a
+  tool-call parameter.
 - Any "if the env/config file already exists, skip everything" guard
   (`write_panel_env`'s original shape) is a trap for anything that needs to
   run on *every* install, not just the first one — found this the hard way
