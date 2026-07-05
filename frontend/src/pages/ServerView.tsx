@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, connectConsoleSocket, connectServerSocket } from '../api/client';
 import { FileManager } from '../components/FileManager';
+import { ScheduleManager } from '../components/ScheduleManager';
 import type { PowerAction, ResourceStats, Server } from '../types';
 
 interface Props {
@@ -262,10 +263,7 @@ export function ServerView({ uuid, onBack }: Props) {
           </div>
 
           <div className={`tab-panel ${tab === 'schedules' ? 'active' : ''}`}>
-            <p className="srv-desc">
-              Schedules aren't implemented yet — the schema exists (server_schedules,
-              schedule_tasks), no cron runner yet. See add.md.
-            </p>
+            {tab === 'schedules' && <ScheduleManager uuid={uuid} />}
           </div>
         </div>
       </div>

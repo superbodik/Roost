@@ -20,6 +20,7 @@ import (
 	"github.com/yourorg/panel/internal/daemonclient"
 	"github.com/yourorg/panel/internal/db"
 	"github.com/yourorg/panel/internal/models"
+	"github.com/yourorg/panel/internal/scheduler"
 	"github.com/yourorg/panel/internal/ws"
 )
 
@@ -79,6 +80,8 @@ func main() {
 		}
 		return client.DialConsole(ctx, serverUUID)
 	}
+
+	go scheduler.Run(pool, resolveNodeClient)
 
 	router := api.NewRouter(api.Dependencies{
 		DB:            pool,

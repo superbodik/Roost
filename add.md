@@ -18,10 +18,12 @@ now also manages **Allocations** per node), **Activity**
 by clicking the user chip in the topbar). Clicking "Manage" on a server
 card goes to **`pages/ServerView.tsx`**, tab-bar with
 Overview/Console/Files/Databases/Schedules — Overview (power buttons +
-live CPU/RAM/Disk meters), Console (real, bidirectional), and now **Files**
+live CPU/RAM/Disk meters), Console (real, bidirectional), Files
 (`components/FileManager.tsx` — browse/edit/delete/create-folder, real
-filesystem operations on the node) are wired; Databases/Schedules are
-still honest "not implemented yet" panels, not fake UI.
+filesystem operations on the node), and now **Schedules**
+(`components/ScheduleManager.tsx` — a real cron runner fires power
+actions on a schedule) are wired; Databases is the one remaining honest
+"not implemented yet" panel.
 
 Backend REST surface: auth (login/me), nodes (list/create, admin-gated),
 servers (list/get/power — power is now genuinely wired end to end, see
@@ -143,6 +145,35 @@ just enough to fix a config file without SSH). `CreateContainer` now also
 `os.MkdirAll`s the server's volume path before creating the container,
 since it needs to exist for the Files tab to have something to list even
 before the first daemon-side install step runs.
+
+**Schedules tab has a real cron runner behind it, not just CRUD.**
+`internal/scheduler.Run` (launched via `go scheduler.Run(...)` in
+`cmd/panel/main.go`) ticks every 60s, matches `server_schedules` rows
+against `time.Now().UTC()` (deliberately UTC, not server-local time — the
+DB column is `TIMESTAMPTZ` and the whole point is not caring what
+timezone the panel host thinks it's in), and dispatches due schedules'
+`schedule_tasks` in `sequence_id` order via the same `resolveNodeClient`
+→ `daemonclient.Power` path everything else uses. Two things worth not
+re-deriving next time:
+- **The cron matcher is deliberately simplified** — `cronFieldMatches`
+  only understands `*` (any) or one exact integer; no comma lists
+  (`1,15`), no ranges (`1-5`), no step values (`*/5`). Verified by hand
+  against a handful of cases before wiring it up. Good enough for "every
+  night at 3am" / "every Sunday", not good enough for a general-purpose
+  cron replacement — extend `cronFieldMatches` itself if that's ever
+  needed, don't add a second matcher.
+- **Firing is claimed atomically** via
+  `UPDATE server_schedules SET last_run_at = $1 WHERE id = $2 AND
+  (last_run_at IS NULL OR last_run_at < $1)`, checking
+  `RowsAffected() == 0` before dispatching. This is what stops the same
+  schedule firing twice if the ticker's tick and a slow query ever
+  overlap — don't dispatch a task before this claim succeeds.
+Scope: only the `power` task action is implemented (`start`/`stop`/
+`restart`/`kill`); `command` (send a console line) and `backup` actions
+are accepted by the schema/UI shape but silently no-op in `execute()` —
+`command` would need the scheduler to open a console WS session itself,
+and `backup` needs backup infrastructure that doesn't exist yet (same
+`database_hosts`-style "out of scope v1" as the Databases tab).
 
 **Server deletion is wired end to end**: `ServerHandler.Delete` checks
 owner-or-admin, calls the daemon's `DeleteServer`, then deletes the row
@@ -269,7 +300,7 @@ building one wasn't justified).
 
 ## Roadmap — rough priority order
 
-### Near-term (Server Detail's remaining tabs — Overview + Console + Files are done)
+### Near-term (Server Detail's remaining tabs — only Databases is left)
 - **Files tab follow-ups** — no file upload (only create/edit/delete/mkdir;
   no drag-and-drop or multipart upload endpoint), no rename UI (the
   backend/daemon `RenameFile` plumbing exists end to end, just nothing in
@@ -279,16 +310,19 @@ building one wasn't justified).
   saves). Also no binary-file handling — the `<textarea>` editor assumes
   text; opening a binary file will show garbage rather than refusing
   cleanly.
-- **Databases tab** — `server_databases` table exists, no handler. Needs a
-  decision on how DB credentials actually get provisioned (a MySQL/Postgres
-  instance per node? shared? the schema has `database_host_id` pointing at
-  a `database_hosts` table that was deliberately never created — "out of
-  scope v1" per the migration's own note).
-- **Schedules tab** — `server_schedules`/`schedule_tasks` tables exist, no
-  handler, no cron runner. The runner is the real work here (some process
-  needs to wake up and check `cron_minute`/`cron_hour`/etc against wall
-  clock and fire `schedule_tasks` in `sequence_id` order) — the UI is the
-  easy 10%.
+- **Databases tab** — the last "not implemented yet" panel. `server_databases`
+  table exists, no handler. Needs a decision on how DB credentials
+  actually get provisioned (a MySQL/Postgres instance per node? shared?
+  the schema has `database_host_id` pointing at a `database_hosts` table
+  that was deliberately never created — "out of scope v1" per the
+  migration's own note).
+- **Schedules follow-ups** — `command` and `backup` task actions are
+  schema/UI-shaped but no-op in `scheduler.execute()` (see the Schedules
+  paragraph above for why). The one-task-per-schedule assumption in the
+  UI (`ScheduleManager.tsx` only ever creates a single `power` task) is a
+  frontend simplification, not a backend limit — `schedule_tasks` already
+  supports an ordered sequence with per-task offsets; a "multi-step
+  schedule" UI is additive whenever it's worth building.
 - **2FA** — `.twofa-card` exists in panel.css, `users.totp_secret`/
   `totp_enabled` columns exist, nothing reads or writes them. Account
   page currently only has the API-keys card.

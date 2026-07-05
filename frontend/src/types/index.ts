@@ -163,3 +163,32 @@ export interface FileEntry {
   modified_at: number;
   mode: string;
 }
+
+export interface ScheduleTask {
+  action: string;
+  payload: string;
+  time_offset_seconds: number;
+}
+
+export interface Schedule {
+  id: number;
+  name: string;
+  cron_minute: string;
+  cron_hour: string;
+  cron_day_of_week: string;
+  cron_day_of_month: string;
+  is_active: boolean;
+  only_when_online: boolean;
+  last_run_at: string | null;
+  tasks: ScheduleTask[];
+}
+
+export interface CreateScheduleRequest {
+  name: string;
+  cron_minute: string;
+  cron_hour: string;
+  cron_day_of_week: string;
+  cron_day_of_month: string;
+  only_when_online: boolean;
+  tasks: ScheduleTask[];
+}

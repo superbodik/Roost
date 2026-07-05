@@ -6,11 +6,13 @@ import type {
   CreateApiKeyResponse,
   CreateNodeRequest,
   CreateNodeResponse,
+  CreateScheduleRequest,
   CreateServerRequest,
   Egg,
   FileEntry,
   Node,
   PowerAction,
+  Schedule,
   Server,
   UpdateCheck,
   VersionInfo,
@@ -196,6 +198,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ from, to }),
     }),
+
+  listSchedules: (uuid: string) => request<Schedule[]>(`/servers/${uuid}/schedules`),
+
+  createSchedule: (uuid: string, payload: CreateScheduleRequest) =>
+    request<{ id: number }>(`/servers/${uuid}/schedules`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  toggleSchedule: (uuid: string, id: number) =>
+    request<void>(`/servers/${uuid}/schedules/${id}/toggle`, { method: 'POST' }),
+
+  deleteSchedule: (uuid: string, id: number) =>
+    request<void>(`/servers/${uuid}/schedules/${id}`, { method: 'DELETE' }),
 };
 
 export { storeTokens, clearTokens };

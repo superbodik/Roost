@@ -59,6 +59,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	allocationHandler := &handlers.AllocationHandler{DB: deps.DB}
 	apiKeyHandler := &handlers.APIKeyHandler{DB: deps.DB}
 	fileHandler := &handlers.FileHandler{DB: deps.DB, NodeClient: deps.NodeClient}
+	scheduleHandler := &handlers.ScheduleHandler{DB: deps.DB}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
@@ -84,6 +85,11 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Delete("/servers/{uuid}/files", fileHandler.Delete)
 			r.Post("/servers/{uuid}/files/directory", fileHandler.CreateDirectory)
 			r.Post("/servers/{uuid}/files/rename", fileHandler.Rename)
+
+			r.Get("/servers/{uuid}/schedules", scheduleHandler.List)
+			r.Post("/servers/{uuid}/schedules", scheduleHandler.Create)
+			r.Post("/servers/{uuid}/schedules/{id}/toggle", scheduleHandler.Toggle)
+			r.Delete("/servers/{uuid}/schedules/{id}", scheduleHandler.Delete)
 
 			r.Get("/eggs", eggHandler.List)
 
