@@ -434,10 +434,19 @@ systemd journal" into "click one button in the UI."
   frontend simplification, not a backend limit — `schedule_tasks` already
   supports an ordered sequence with per-task offsets; a "multi-step
   schedule" UI is additive whenever it's worth building.
-- **Allocations need real provisioning**, not a bare IP+port text form —
-  no port-range/bulk-add, no validation that the IP actually belongs to
-  the node, no reservation system. Fine for one operator manually running
-  a handful of servers; won't scale past that.
+- **Allocations got port-range bulk-add and delete** — `AllocationHandler.Create`
+  now accepts an optional `port_end`; when set, it loops `port..port_end`
+  inside one transaction, `INSERT ... ON CONFLICT (node_id, ip, port) DO
+  NOTHING` per port (so re-adding an overlapping range is a no-op instead
+  of a hard failure), and reports back how many were actually created vs.
+  requested — capped at 1000 ports/request as a sanity limit, not a real
+  scaling concern. Added `DELETE /allocations/{id}`, which never existed
+  before (a mistaken entry was permanent); it only deletes when
+  `server_id IS NULL`, so an allocation currently backing a running
+  server can't be yanked out from under it. Still no validation that the
+  IP actually belongs to the node (nothing stops an operator from typing
+  a wrong IP) and no reservation system for "hold this range for later" —
+  low priority since it's an admin-only, low-frequency operation.
 
 ### Mid-term (real functionality gaps, not just missing UI)
 - RBAC is currently binary (`is_admin` or nothing) — `auth.PermissionChecker`

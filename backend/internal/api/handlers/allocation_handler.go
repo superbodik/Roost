@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -57,11 +58,14 @@ func (h *AllocationHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 type createAllocationRequest struct {
-	NodeID int64  `json:"node_id"`
-	IP     string `json:"ip"`
-	Port   int    `json:"port"`
-	Alias  string `json:"alias"`
+	NodeID  int64  `json:"node_id"`
+	IP      string `json:"ip"`
+	Port    int    `json:"port"`
+	PortEnd int    `json:"port_end"`
+	Alias   string `json:"alias"`
 }
+
+const maxAllocationRangeSize = 1000
 
 func (h *AllocationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createAllocationRequest
@@ -74,22 +78,72 @@ func (h *AllocationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	portEnd := req.PortEnd
+	if portEnd == 0 {
+		portEnd = req.Port
+	}
+	if portEnd < req.Port {
+		http.Error(w, "port_end must be greater than or equal to port", http.StatusBadRequest)
+		return
+	}
+	if portEnd-req.Port+1 > maxAllocationRangeSize {
+		http.Error(w, "port range too large (max 1000 ports per request)", http.StatusBadRequest)
+		return
+	}
+
 	var alias *string
 	if req.Alias != "" {
 		alias = &req.Alias
 	}
 
-	var id int64
-	err := h.DB.QueryRow(r.Context(), `
-		INSERT INTO allocations (node_id, ip, port, alias)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id`,
-		req.NodeID, req.IP, req.Port, alias,
-	).Scan(&id)
+	ctx := r.Context()
+	tx, err := h.DB.Begin(ctx)
 	if err != nil {
-		http.Error(w, "failed to create allocation (duplicate ip:port on this node?)", http.StatusConflict)
+		http.Error(w, "failed to start transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	created := 0
+	for port := req.Port; port <= portEnd; port++ {
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO allocations (node_id, ip, port, alias)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (node_id, ip, port) DO NOTHING`,
+			req.NodeID, req.IP, port, alias,
+		)
+		if err != nil {
+			http.Error(w, "failed to create allocations", http.StatusInternalServerError)
+			return
+		}
+		created += int(tag.RowsAffected())
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		http.Error(w, "failed to commit allocations", http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+	writeJSON(w, http.StatusCreated, map[string]any{"created": created})
+}
+
+func (h *AllocationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid allocation id", http.StatusBadRequest)
+		return
+	}
+
+	res, err := h.DB.Exec(r.Context(),
+		`DELETE FROM allocations WHERE id = $1 AND server_id IS NULL`, id)
+	if err != nil {
+		http.Error(w, "failed to delete allocation", http.StatusInternalServerError)
+		return
+	}
+	if res.RowsAffected() == 0 {
+		http.Error(w, "allocation not found or still in use by a server", http.StatusConflict)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -145,6 +145,7 @@ export interface CreateAllocationRequest {
   node_id: number;
   ip: string;
   port: number;
+  port_end?: number;
   alias?: string;
 }
 

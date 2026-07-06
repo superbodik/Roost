@@ -97,6 +97,7 @@ func NewRouter(deps Dependencies) http.Handler {
 
 			r.Get("/allocations", allocationHandler.List)
 			r.With(auth.RequireAdmin).Post("/allocations", allocationHandler.Create)
+			r.With(auth.RequireAdmin).Delete("/allocations/{id}", allocationHandler.Delete)
 
 			r.Get("/version", versionHandler.Get)
 			r.Get("/version/check", versionHandler.CheckUpdate)

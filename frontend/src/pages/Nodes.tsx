@@ -25,7 +25,7 @@ export function Nodes() {
 
   const [allocationNodeId, setAllocationNodeId] = useState(0);
   const [allocations, setAllocations] = useState<Allocation[]>([]);
-  const [allocForm, setAllocForm] = useState({ ip: '', port: 25565 });
+  const [allocForm, setAllocForm] = useState({ ip: '', port: 25565, portEnd: 25565 });
   const [allocError, setAllocError] = useState<string | null>(null);
   const [allocSubmitting, setAllocSubmitting] = useState(false);
 
@@ -64,17 +64,33 @@ export function Nodes() {
     setAllocSubmitting(true);
     setAllocError(null);
     try {
-      await api.createAllocation({
+      const result = await api.createAllocation({
         node_id: allocationNodeId,
         ip: allocForm.ip,
         port: allocForm.port,
+        port_end: allocForm.portEnd,
       });
-      setAllocForm((f) => ({ ...f, port: f.port + 1 }));
+      const next = allocForm.portEnd + 1;
+      setAllocForm((f) => ({ ...f, port: next, portEnd: next }));
+      if (result.created < allocForm.portEnd - allocForm.port + 1) {
+        setAllocError(
+          `Added ${result.created} of ${allocForm.portEnd - allocForm.port + 1} ports (some already existed).`,
+        );
+      }
       refreshAllocations(allocationNodeId);
     } catch (err) {
       setAllocError(err instanceof Error ? err.message : String(err));
     } finally {
       setAllocSubmitting(false);
+    }
+  }
+
+  async function handleDeleteAllocation(id: number) {
+    try {
+      await api.deleteAllocation(id);
+      refreshAllocations(allocationNodeId);
+    } catch (err) {
+      setAllocError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -303,12 +319,29 @@ export function Nodes() {
                   />
                 </div>
                 <div className="sfield">
-                  <label htmlFor="alloc-port">Port</label>
+                  <label htmlFor="alloc-port">Port (start)</label>
                   <input
                     id="alloc-port"
                     type="number"
                     value={allocForm.port}
-                    onChange={(e) => setAllocForm((f) => ({ ...f, port: Number(e.target.value) }))}
+                    onChange={(e) => {
+                      const port = Number(e.target.value);
+                      setAllocForm((f) => ({
+                        ...f,
+                        port,
+                        portEnd: f.portEnd === f.port ? port : f.portEnd,
+                      }));
+                    }}
+                    required
+                  />
+                </div>
+                <div className="sfield">
+                  <label htmlFor="alloc-port-end">Port (end, optional range)</label>
+                  <input
+                    id="alloc-port-end"
+                    type="number"
+                    value={allocForm.portEnd}
+                    onChange={(e) => setAllocForm((f) => ({ ...f, portEnd: Number(e.target.value) }))}
                     required
                   />
                 </div>
@@ -320,7 +353,7 @@ export function Nodes() {
                   type="submit"
                   disabled={allocSubmitting}
                 >
-                  {allocSubmitting ? 'Adding…' : 'Add allocation'}
+                  {allocSubmitting ? 'Adding…' : 'Add allocation(s)'}
                 </button>
               </div>
             </form>
@@ -339,7 +372,13 @@ export function Nodes() {
                   </span>
                   <span>{a.server_id ? 'In use' : 'Free'}</span>
                   <span />
-                  <span />
+                  <span>
+                    {!a.server_id && (
+                      <button className="file-act-btn del" onClick={() => handleDeleteAllocation(a.id)}>
+                        Delete
+                      </button>
+                    )}
+                  </span>
                 </div>
               ))}
               {allocations.length === 0 && (

@@ -204,7 +204,9 @@ export const api = {
     request<Allocation[]>(`/allocations?node_id=${nodeId}${freeOnly ? '&free=true' : ''}`),
 
   createAllocation: (payload: CreateAllocationRequest) =>
-    request<{ id: number }>('/allocations', { method: 'POST', body: JSON.stringify(payload) }),
+    request<{ created: number }>('/allocations', { method: 'POST', body: JSON.stringify(payload) }),
+
+  deleteAllocation: (id: number) => request<void>(`/allocations/${id}`, { method: 'DELETE' }),
 
   listApiKeys: () => request<ApiKey[]>('/account/api-keys'),
 
