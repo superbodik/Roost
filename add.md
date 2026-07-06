@@ -1258,3 +1258,9 @@ actually flow into the create form.
   `/etc/postgresql`, `/etc/postgresql-common` and `/var/log/postgresql`
   in the cleanup `rm -rf` rather than trusting purge to have caught
   everything.
+- Replaced every remaining `superbodik/sbPanel` reference with
+  `superbodik/Roost` (backend's default `PANEL_UPDATE_REPO`, the
+  frontend's node-install-command URL, `install.sh`'s self-clone URL,
+  README badges/links, and the marketing site) to match the GitHub repo
+  rename — the version-check and node-install-command features would
+  otherwise have kept pointing at the old, redirected URL indefinitely.

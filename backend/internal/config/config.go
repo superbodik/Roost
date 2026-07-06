@@ -33,7 +33,7 @@ func Load() Config {
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		EncryptionKey:   os.Getenv("PANEL_ENCRYPTION_KEY"),
 		SourceDir:       getEnv("PANEL_SOURCE_DIR", ""),
-		RepoSlug:        getEnv("PANEL_UPDATE_REPO", "superbodik/sbPanel"),
+		RepoSlug:        getEnv("PANEL_UPDATE_REPO", "superbodik/Roost"),
 	}
 
 	if cfg.JWTSecret == "" || cfg.JWTSecret == "change-me-in-production" {
