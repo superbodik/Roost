@@ -19,6 +19,7 @@ type Client struct {
 	baseURL     string
 	daemonToken string
 	http        *http.Client
+	longHTTP    *http.Client
 }
 
 func New(baseURL, daemonToken string) *Client {
@@ -26,6 +27,7 @@ func New(baseURL, daemonToken string) *Client {
 		baseURL:     baseURL,
 		daemonToken: daemonToken,
 		http:        &http.Client{Timeout: 15 * time.Second},
+		longHTTP:    &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -224,7 +226,7 @@ type AddDomainResponse struct {
 func (c *Client) AddDomain(ctx context.Context, serverUUID uuid.UUID, req AddDomainRequest) (*AddDomainResponse, error) {
 	var resp AddDomainResponse
 	path := fmt.Sprintf("/api/v1/servers/%s/domains", serverUUID)
-	if err := c.doJSON(ctx, http.MethodPost, path, req, &resp); err != nil {
+	if err := c.doJSONWith(c.longHTTP, ctx, http.MethodPost, path, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -232,10 +234,14 @@ func (c *Client) AddDomain(ctx context.Context, serverUUID uuid.UUID, req AddDom
 
 func (c *Client) RemoveDomain(ctx context.Context, serverUUID uuid.UUID, domain string) error {
 	path := fmt.Sprintf("/api/v1/servers/%s/domains/%s", serverUUID, url.QueryEscape(domain))
-	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
+	return c.doJSONWith(c.longHTTP, ctx, http.MethodDelete, path, nil, nil)
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body, out interface{}) error {
+	return c.doJSONWith(c.http, ctx, method, path, body, out)
+}
+
+func (c *Client) doJSONWith(client *http.Client, ctx context.Context, method, path string, body, out interface{}) error {
 	var reader *bytes.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -254,7 +260,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out inte
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.daemonToken)
 
-	resp, err := c.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("call node daemon: %w", err)
 	}

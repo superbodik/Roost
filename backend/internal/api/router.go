@@ -53,7 +53,6 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(maxBodySize(maxRequestBodyBytes))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173"},
@@ -92,6 +91,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		r.Post("/auth/refresh", authHandler.Refresh)
 
 		r.Group(func(r chi.Router) {
+			r.Use(middleware.Timeout(30 * time.Second))
 			r.Use(auth.Middleware(deps.Token, resolveAPIKey(deps.DB)))
 
 			r.Get("/auth/me", authHandler.Me)
@@ -133,8 +133,6 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Delete("/servers/{uuid}/databases/{id}", serverDatabaseHandler.Delete)
 
 			r.Get("/servers/{uuid}/domains", serverDomainHandler.List)
-			r.Post("/servers/{uuid}/domains", serverDomainHandler.Create)
-			r.Delete("/servers/{uuid}/domains/{id}", serverDomainHandler.Delete)
 
 			r.Get("/servers/{uuid}/subusers", subuserHandler.List)
 			r.Post("/servers/{uuid}/subusers", subuserHandler.Create)
@@ -160,6 +158,14 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Post("/account/2fa/setup", twofaHandler.Setup)
 			r.Post("/account/2fa/verify", twofaHandler.Verify)
 			r.Post("/account/2fa/disable", twofaHandler.Disable)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Timeout(150 * time.Second))
+			r.Use(auth.Middleware(deps.Token, resolveAPIKey(deps.DB)))
+
+			r.Post("/servers/{uuid}/domains", serverDomainHandler.Create)
+			r.Delete("/servers/{uuid}/domains/{id}", serverDomainHandler.Delete)
 		})
 	})
 

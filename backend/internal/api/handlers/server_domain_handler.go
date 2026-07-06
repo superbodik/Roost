@@ -130,7 +130,7 @@ func (h *ServerDomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 	resp, err := client.AddDomain(ctx, serverUUID, daemonclient.AddDomainRequest{Domain: domain, Port: port, Email: req.Email})
 	if err != nil {

@@ -27,7 +27,6 @@ func NewRouter(dockerManager *docker.Manager, consoleHub *console.Hub, daemonTok
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(maxBodySize(maxRequestBodyBytes))
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -40,23 +39,31 @@ func NewRouter(dockerManager *docker.Manager, consoleHub *console.Hub, daemonTok
 
 		h := &Handlers{Docker: dockerManager, Console: consoleHub}
 
-		r.Route("/api/v1", func(r chi.Router) {
-			r.Post("/servers", h.CreateServer)
-			r.Post("/servers/{uuid}/power", h.Power)
-			r.Post("/servers/{uuid}/command", h.SendCommand)
-			r.Delete("/servers/{uuid}", h.Delete)
-			r.Get("/servers/{uuid}/stats", h.Stats)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Timeout(60 * time.Second))
 
-			r.Get("/servers/{uuid}/files", h.ListFiles)
-			r.Get("/servers/{uuid}/files/contents", h.ReadFile)
-			r.Put("/servers/{uuid}/files/contents", h.WriteFile)
-			r.Delete("/servers/{uuid}/files", h.DeleteFile)
-			r.Post("/servers/{uuid}/files/directory", h.CreateDirectory)
-			r.Post("/servers/{uuid}/files/rename", h.RenameFile)
+			r.Route("/api/v1", func(r chi.Router) {
+				r.Post("/servers", h.CreateServer)
+				r.Post("/servers/{uuid}/power", h.Power)
+				r.Post("/servers/{uuid}/command", h.SendCommand)
+				r.Delete("/servers/{uuid}", h.Delete)
+				r.Get("/servers/{uuid}/stats", h.Stats)
 
-			r.Post("/servers/{uuid}/domains", h.AddDomain)
-			r.Delete("/servers/{uuid}/domains/{domain}", h.RemoveDomain)
+				r.Get("/servers/{uuid}/files", h.ListFiles)
+				r.Get("/servers/{uuid}/files/contents", h.ReadFile)
+				r.Put("/servers/{uuid}/files/contents", h.WriteFile)
+				r.Delete("/servers/{uuid}/files", h.DeleteFile)
+				r.Post("/servers/{uuid}/files/directory", h.CreateDirectory)
+				r.Post("/servers/{uuid}/files/rename", h.RenameFile)
+			})
 		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Timeout(150 * time.Second))
+			r.Post("/api/v1/servers/{uuid}/domains", h.AddDomain)
+			r.Delete("/api/v1/servers/{uuid}/domains/{domain}", h.RemoveDomain)
+		})
+
 		r.Get("/ws/servers/{uuid}", h.ConsoleSocket)
 	})
 

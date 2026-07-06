@@ -1312,3 +1312,33 @@ actually flow into the create form.
   outright blocking fresh installs, the Roost marketing site + README
   rebrand, and per-server custom domains with nginx+certbot reverse
   proxying on the node.
+- **Adding a custom domain died with `Client.Timeout exceeded while
+  awaiting headers` (502)** — confirmed live, right after shipping the
+  domains feature. Three separate timeout ceilings were all shorter than
+  certbot's ACME validation can legitimately take, and fixing only the
+  most obvious one wasn't enough:
+  1. `daemonclient.Client`'s shared `http.Client` had a hardcoded
+     `Timeout: 15 * time.Second` used for every call type — including
+     `AddDomain`, which shells out to certbot on the node and can easily
+     run past 15s. `http.Client.Timeout` caps the whole round trip
+     regardless of the context deadline the caller passes, so the
+     handler's own `context.WithTimeout(r.Context(), 90*time.Second)`
+     never got a chance to matter. Added a second `longHTTP` client
+     (120s) used only by `AddDomain`/`RemoveDomain`.
+  2. Both the panel's and the daemon's chi routers had
+     `middleware.Timeout(...)` applied via `r.Use` on the *root* router,
+     before any route groups existed — the exact same "blanket `r.Use`
+     catches every route registered on this router, including ones added
+     later" class of bug documented above for `RequireDaemonToken` and
+     `/healthz`. Since a context's deadline can only ever shrink when a
+     child derives from it (never extend past the parent's), the
+     handler's own longer timeout was silently capped back down to
+     whatever the root middleware had already set (30s on the panel, 60s
+     on the daemon) — my fix to daemonclient's timeout in isolation
+     wouldn't have been enough on its own. Fixed by moving
+     `middleware.Timeout` off the root router on both sides and applying
+     it per-group instead: the existing routes keep their original
+     30s/60s ceiling in one group, and the domain create/delete routes
+     get their own 150s-timeout group sitting alongside it. Verified both
+     routers still construct without a chi route-registration panic via a
+     throwaway `NewRouter` smoke test on each side before shipping.
