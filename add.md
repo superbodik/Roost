@@ -1109,3 +1109,30 @@ actually flow into the create form.
   webhooks with their own signature scheme), register it before/outside
   the auth group rather than assuming a later route can opt out of an
   earlier blanket `r.Use`.
+- **Found and fixed the real cause of a live `failed to read servers (500)`
+  report**: `models.Server.ContainerID` was declared as a non-pointer
+  `string`, but `servers.container_id` in the schema is nullable
+  (`TEXT`, no `NOT NULL`/`DEFAULT`) and — confirmed via a repo-wide
+  grep — is **never written by any `INSERT`/`UPDATE` anywhere in the
+  codebase**. Every server row has had `container_id = NULL` since the
+  table was created. pgx's `Scan()` fails at runtime the moment it tries
+  to scan a SQL `NULL` into a non-pointer Go field, which is exactly
+  the "failed to read servers" branch in `ServerHandler.List`/`Get`
+  (as opposed to "failed to list servers", the query-failure branch —
+  worth keeping those two error strings distinct for exactly this kind
+  of diagnosis). This bug has presumably existed since those handlers
+  were first written, but stayed dormant all session because the
+  `servers` table was empty while the daemon 401/502 issues were being
+  debugged — it only surfaced once the node/token fixes let the user
+  actually create a server for the first time. Fixed by changing the
+  field to `*string`, matching the schema's real nullability; updated
+  the matching frontend type (`container_id?: string | null`) for
+  consistency, though nothing renders it. Checked `Description` for the
+  same risk (also nullable, also non-pointer) but confirmed it's not
+  currently exposed: `CreateServerForm.tsx` has no description input, so
+  Go's JSON decode always defaults that field to `""`, never `NULL`, in
+  current practice — left as-is rather than defensively changing a field
+  that isn't actually broken yet. General lesson: a nullable DB column
+  scanned into a non-pointer Go field is a time bomb that only detonates
+  once a real NULL row exists to scan, which can be long after the code
+  was written and reviewed.

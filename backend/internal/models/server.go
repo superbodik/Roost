@@ -43,7 +43,7 @@ type Server struct {
 	BackupLimit     int `json:"backup_limit"`
 
 	Status      ServerStatus `json:"status"`
-	ContainerID string       `json:"container_id,omitempty"`
+	ContainerID *string      `json:"container_id,omitempty"`
 	IsSuspended bool         `json:"is_suspended"`
 
 	NodeName       string  `json:"node_name,omitempty"`

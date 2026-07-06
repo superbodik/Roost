@@ -32,7 +32,7 @@ export interface Server {
   backup_limit: number;
 
   status: ServerStatus;
-  container_id?: string;
+  container_id?: string | null;
   is_suspended: boolean;
 
   created_at: string;
