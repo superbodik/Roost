@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourorg/panel/internal/api/handlers"
@@ -45,9 +46,11 @@ func NewRouter(deps Dependencies) http.Handler {
 		AllowCredentials: true,
 	}))
 
+	subusers := auth.NewSubuserChecker(deps.DB)
+
 	authHandler := &handlers.AuthHandler{DB: deps.DB, Token: deps.Token, EncryptionKey: deps.EncryptionKey}
 	nodeHandler := &handlers.NodeHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey, NodeClient: deps.NodeClient}
-	serverHandler := &handlers.ServerHandler{DB: deps.DB, NodeClient: deps.NodeClient}
+	serverHandler := &handlers.ServerHandler{DB: deps.DB, NodeClient: deps.NodeClient, Subusers: subusers}
 	versionHandler := &handlers.VersionHandler{
 		Commit:    deps.Commit,
 		BuildDate: deps.BuildDate,
@@ -58,9 +61,10 @@ func NewRouter(deps Dependencies) http.Handler {
 	eggHandler := &handlers.EggHandler{DB: deps.DB}
 	allocationHandler := &handlers.AllocationHandler{DB: deps.DB}
 	apiKeyHandler := &handlers.APIKeyHandler{DB: deps.DB}
-	fileHandler := &handlers.FileHandler{DB: deps.DB, NodeClient: deps.NodeClient}
-	scheduleHandler := &handlers.ScheduleHandler{DB: deps.DB}
+	fileHandler := &handlers.FileHandler{DB: deps.DB, NodeClient: deps.NodeClient, Subusers: subusers}
+	scheduleHandler := &handlers.ScheduleHandler{DB: deps.DB, Subusers: subusers}
 	twofaHandler := &handlers.TwoFAHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey}
+	subuserHandler := &handlers.SubuserHandler{DB: deps.DB}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
@@ -93,6 +97,11 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Post("/servers/{uuid}/schedules/{id}/toggle", scheduleHandler.Toggle)
 			r.Delete("/servers/{uuid}/schedules/{id}", scheduleHandler.Delete)
 
+			r.Get("/servers/{uuid}/subusers", subuserHandler.List)
+			r.Post("/servers/{uuid}/subusers", subuserHandler.Create)
+			r.Patch("/servers/{uuid}/subusers/{id}", subuserHandler.Update)
+			r.Delete("/servers/{uuid}/subusers/{id}", subuserHandler.Delete)
+
 			r.Get("/eggs", eggHandler.List)
 
 			r.Get("/allocations", allocationHandler.List)
@@ -116,26 +125,28 @@ func NewRouter(deps Dependencies) http.Handler {
 	})
 
 	r.Get("/ws/servers/{uuid}", func(w http.ResponseWriter, r *http.Request) {
-		if !authenticateWS(r, deps.Token) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		id, err := parseUUIDParam(r, "uuid")
 		if err != nil {
 			http.Error(w, "invalid server uuid", http.StatusBadRequest)
+			return
+		}
+		claims, ok := authenticateWS(r, deps.Token)
+		if !ok || !canAccessServerWS(r, deps.DB, subusers, claims, id, "") {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		deps.Hub.ServeServerSocket(w, r, id)
 	})
 
 	r.Get("/ws/servers/{uuid}/console", func(w http.ResponseWriter, r *http.Request) {
-		if !authenticateWS(r, deps.Token) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		id, err := parseUUIDParam(r, "uuid")
 		if err != nil {
 			http.Error(w, "invalid server uuid", http.StatusBadRequest)
+			return
+		}
+		claims, ok := authenticateWS(r, deps.Token)
+		if !ok || !canAccessServerWS(r, deps.DB, subusers, claims, id, auth.PermConsole) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		deps.Hub.ServeConsoleSocket(w, r, id)
@@ -144,13 +155,29 @@ func NewRouter(deps Dependencies) http.Handler {
 	return r
 }
 
-func authenticateWS(r *http.Request, tm *auth.TokenManager) bool {
+func authenticateWS(r *http.Request, tm *auth.TokenManager) (*auth.Claims, bool) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		return false
+		return nil, false
 	}
 	claims, err := tm.Parse(token)
-	return err == nil && claims.Type == auth.TokenAccess
+	if err != nil || claims.Type != auth.TokenAccess {
+		return nil, false
+	}
+	return claims, true
+}
+
+func canAccessServerWS(r *http.Request, db *pgxpool.Pool, subusers *auth.SubuserChecker, claims *auth.Claims, serverUUID uuid.UUID, permission string) bool {
+	var serverID, ownerID int64
+	if err := db.QueryRow(r.Context(),
+		`SELECT id, owner_id FROM servers WHERE uuid = $1`, serverUUID,
+	).Scan(&serverID, &ownerID); err != nil {
+		return false
+	}
+	if permission == "" {
+		return subusers.CanViewServer(r.Context(), claims, ownerID, serverID)
+	}
+	return subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission)
 }
 
 func resolveAPIKey(pool *pgxpool.Pool) auth.APIKeyResolver {

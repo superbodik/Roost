@@ -13,7 +13,8 @@ import (
 )
 
 type ScheduleHandler struct {
-	DB *pgxpool.Pool
+	DB       *pgxpool.Pool
+	Subusers *auth.SubuserChecker
 }
 
 type scheduleTask struct {
@@ -35,7 +36,7 @@ type scheduleSummary struct {
 	Tasks          []scheduleTask `json:"tasks"`
 }
 
-func (h *ScheduleHandler) resolveServer(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func (h *ScheduleHandler) resolveServer(w http.ResponseWriter, r *http.Request, permission string) (int64, bool) {
 	claims, ok := auth.FromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -49,7 +50,7 @@ func (h *ScheduleHandler) resolveServer(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "server not found", http.StatusNotFound)
 		return 0, false
 	}
-	if !claims.IsAdmin && claims.UserID != ownerID {
+	if !h.Subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return 0, false
 	}
@@ -58,7 +59,7 @@ func (h *ScheduleHandler) resolveServer(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *ScheduleHandler) List(w http.ResponseWriter, r *http.Request) {
-	serverID, ok := h.resolveServer(w, r)
+	serverID, ok := h.resolveServer(w, r, auth.PermSchedulesRead)
 	if !ok {
 		return
 	}
@@ -117,7 +118,7 @@ type createScheduleRequest struct {
 }
 
 func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
-	serverID, ok := h.resolveServer(w, r)
+	serverID, ok := h.resolveServer(w, r, auth.PermSchedulesWrite)
 	if !ok {
 		return
 	}
@@ -174,7 +175,7 @@ func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ScheduleHandler) Toggle(w http.ResponseWriter, r *http.Request) {
-	serverID, ok := h.resolveServer(w, r)
+	serverID, ok := h.resolveServer(w, r, auth.PermSchedulesWrite)
 	if !ok {
 		return
 	}
@@ -197,7 +198,7 @@ func (h *ScheduleHandler) Toggle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ScheduleHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	serverID, ok := h.resolveServer(w, r)
+	serverID, ok := h.resolveServer(w, r, auth.PermSchedulesWrite)
 	if !ok {
 		return
 	}

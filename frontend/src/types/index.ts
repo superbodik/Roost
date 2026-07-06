@@ -198,6 +198,25 @@ export interface Schedule {
   tasks: ScheduleTask[];
 }
 
+export interface Subuser {
+  id: number;
+  user_id: number;
+  email: string;
+  permissions: string[];
+}
+
+export const SUBUSER_PERMISSIONS: { code: string; label: string }[] = [
+  { code: 'control.start', label: 'Start' },
+  { code: 'control.stop', label: 'Stop' },
+  { code: 'control.restart', label: 'Restart' },
+  { code: 'control.kill', label: 'Kill' },
+  { code: 'console', label: 'Console' },
+  { code: 'files.read', label: 'View files' },
+  { code: 'files.write', label: 'Manage files' },
+  { code: 'schedules.read', label: 'View schedules' },
+  { code: 'schedules.write', label: 'Manage schedules' },
+];
+
 export interface CreateScheduleRequest {
   name: string;
   cron_minute: string;

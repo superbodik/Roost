@@ -15,6 +15,7 @@ import type {
   PowerAction,
   Schedule,
   Server,
+  Subuser,
   TwoFASetup,
   TwoFAStatus,
   UpdateCheck,
@@ -284,6 +285,23 @@ export const api = {
 
   deleteSchedule: (uuid: string, id: number) =>
     request<void>(`/servers/${uuid}/schedules/${id}`, { method: 'DELETE' }),
+
+  listSubusers: (uuid: string) => request<Subuser[]>(`/servers/${uuid}/subusers`),
+
+  addSubuser: (uuid: string, email: string, permissions: string[]) =>
+    request<{ id: number }>(`/servers/${uuid}/subusers`, {
+      method: 'POST',
+      body: JSON.stringify({ email, permissions }),
+    }),
+
+  updateSubuser: (uuid: string, id: number, permissions: string[]) =>
+    request<void>(`/servers/${uuid}/subusers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ permissions }),
+    }),
+
+  removeSubuser: (uuid: string, id: number) =>
+    request<void>(`/servers/${uuid}/subusers/${id}`, { method: 'DELETE' }),
 };
 
 export { storeTokens, clearTokens };

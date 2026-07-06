@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, connectConsoleSocket, connectServerSocket } from '../api/client';
 import { FileManager } from '../components/FileManager';
 import { ScheduleManager } from '../components/ScheduleManager';
+import { SubuserManager } from '../components/SubuserManager';
 import type { PowerAction, ResourceStats, Server } from '../types';
 
 interface Props {
@@ -9,7 +10,7 @@ interface Props {
   onBack: () => void;
 }
 
-type Tab = 'overview' | 'console' | 'files' | 'databases' | 'schedules';
+type Tab = 'overview' | 'console' | 'files' | 'databases' | 'schedules' | 'sharing';
 
 function pct(used: number, limitMB: number): number {
   const limitBytes = limitMB * 1024 * 1024;
@@ -166,7 +167,7 @@ export function ServerView({ uuid, onBack }: Props) {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="tab-bar">
-            {(['overview', 'console', 'files', 'databases', 'schedules'] as Tab[]).map((t) => (
+            {(['overview', 'console', 'files', 'databases', 'schedules', 'sharing'] as Tab[]).map((t) => (
               <div
                 key={t}
                 className={`tab-btn ${tab === t ? 'active' : ''}`}
@@ -264,6 +265,10 @@ export function ServerView({ uuid, onBack }: Props) {
 
           <div className={`tab-panel ${tab === 'schedules' ? 'active' : ''}`}>
             {tab === 'schedules' && <ScheduleManager uuid={uuid} />}
+          </div>
+
+          <div className={`tab-panel ${tab === 'sharing' ? 'active' : ''}`}>
+            {tab === 'sharing' && <SubuserManager uuid={uuid} />}
           </div>
         </div>
       </div>

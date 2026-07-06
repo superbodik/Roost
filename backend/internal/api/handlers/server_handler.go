@@ -20,6 +20,7 @@ import (
 type ServerHandler struct {
 	DB         *pgxpool.Pool
 	NodeClient func(nodeID int64) (*daemonclient.Client, error)
+	Subusers   *auth.SubuserChecker
 }
 
 func (h *ServerHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -30,13 +31,14 @@ func (h *ServerHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.DB.Query(r.Context(), `
-		SELECT s.id, s.uuid, s.uuid_short, s.name, s.description, s.owner_id,
+		SELECT DISTINCT s.id, s.uuid, s.uuid_short, s.name, s.description, s.owner_id,
 		       s.node_id, s.egg_id, s.docker_image, s.startup_command,
 		       s.memory_mb, s.swap_mb, s.disk_mb, s.io_weight, s.cpu_percent,
 		       s.allocation_limit, s.database_limit, s.backup_limit,
 		       s.status, s.container_id, s.is_suspended, s.created_at, s.updated_at
 		FROM servers s
-		WHERE s.owner_id = $1 OR $2 = true
+		LEFT JOIN server_subusers su ON su.server_id = s.id AND su.user_id = $1
+		WHERE s.owner_id = $1 OR $2 = true OR su.user_id IS NOT NULL
 		ORDER BY s.created_at DESC`, claims.UserID, claims.IsAdmin)
 	if err != nil {
 		http.Error(w, "failed to list servers", http.StatusInternalServerError)
@@ -196,6 +198,12 @@ func (h *ServerHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ServerHandler) Get(w http.ResponseWriter, r *http.Request) {
+	claims, ok := auth.FromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	id, err := uuid.Parse(chi.URLParam(r, "uuid"))
 	if err != nil {
 		http.Error(w, "invalid server uuid", http.StatusBadRequest)
@@ -223,6 +231,14 @@ func (h *ServerHandler) Get(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		http.Error(w, "failed to load server", http.StatusInternalServerError)
 		return
+	}
+
+	if !claims.IsAdmin && claims.UserID != s.OwnerID {
+		isSub, _ := h.Subusers.IsSubuser(r.Context(), claims.UserID, s.ID)
+		if !isSub {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, s)
@@ -286,7 +302,20 @@ type powerRequest struct {
 	Action daemonclient.PowerAction `json:"action"`
 }
 
+var powerPermissions = map[daemonclient.PowerAction]string{
+	daemonclient.PowerStart:   auth.PermControlStart,
+	daemonclient.PowerStop:    auth.PermControlStop,
+	daemonclient.PowerRestart: auth.PermControlRestart,
+	daemonclient.PowerKill:    auth.PermControlKill,
+}
+
 func (h *ServerHandler) Power(w http.ResponseWriter, r *http.Request) {
+	claims, ok := auth.FromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	id, err := uuid.Parse(chi.URLParam(r, "uuid"))
 	if err != nil {
 		http.Error(w, "invalid server uuid", http.StatusBadRequest)
@@ -298,12 +327,21 @@ func (h *ServerHandler) Power(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
+	permission, ok := powerPermissions[req.Action]
+	if !ok {
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
 
-	var serverID, nodeID int64
+	var serverID, nodeID, ownerID int64
 	if err := h.DB.QueryRow(r.Context(),
-		`SELECT id, node_id FROM servers WHERE uuid = $1`, id,
-	).Scan(&serverID, &nodeID); err != nil {
+		`SELECT id, node_id, owner_id FROM servers WHERE uuid = $1`, id,
+	).Scan(&serverID, &nodeID, &ownerID); err != nil {
 		http.Error(w, "server not found", http.StatusNotFound)
+		return
+	}
+	if !h.Subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -319,15 +357,13 @@ func (h *ServerHandler) Power(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if claims, ok := auth.FromContext(r.Context()); ok {
-		activity.Record(r.Context(), h.DB, activity.Entry{
-			ActorUserID: &claims.UserID,
-			ServerID:    &serverID,
-			NodeID:      &nodeID,
-			Event:       "server.power." + string(req.Action),
-			IPAddress:   activity.RequestIP(r),
-		})
-	}
+	activity.Record(r.Context(), h.DB, activity.Entry{
+		ActorUserID: &claims.UserID,
+		ServerID:    &serverID,
+		NodeID:      &nodeID,
+		Event:       "server.power." + string(req.Action),
+		IPAddress:   activity.RequestIP(r),
+	})
 
 	writeJSON(w, http.StatusOK, resp)
 }

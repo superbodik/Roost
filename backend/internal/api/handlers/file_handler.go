@@ -16,9 +16,10 @@ import (
 type FileHandler struct {
 	DB         *pgxpool.Pool
 	NodeClient func(nodeID int64) (*daemonclient.Client, error)
+	Subusers   *auth.SubuserChecker
 }
 
-func (h *FileHandler) resolve(w http.ResponseWriter, r *http.Request) (uuid.UUID, *daemonclient.Client, bool) {
+func (h *FileHandler) resolve(w http.ResponseWriter, r *http.Request, permission string) (uuid.UUID, *daemonclient.Client, bool) {
 	serverUUID, err := uuid.Parse(chi.URLParam(r, "uuid"))
 	if err != nil {
 		http.Error(w, "invalid server uuid", http.StatusBadRequest)
@@ -31,14 +32,14 @@ func (h *FileHandler) resolve(w http.ResponseWriter, r *http.Request) (uuid.UUID
 		return uuid.UUID{}, nil, false
 	}
 
-	var nodeID, ownerID int64
+	var serverID, nodeID, ownerID int64
 	if err := h.DB.QueryRow(r.Context(),
-		`SELECT node_id, owner_id FROM servers WHERE uuid = $1`, serverUUID,
-	).Scan(&nodeID, &ownerID); err != nil {
+		`SELECT id, node_id, owner_id FROM servers WHERE uuid = $1`, serverUUID,
+	).Scan(&serverID, &nodeID, &ownerID); err != nil {
 		http.Error(w, "server not found", http.StatusNotFound)
 		return uuid.UUID{}, nil, false
 	}
-	if !claims.IsAdmin && claims.UserID != ownerID {
+	if !h.Subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return uuid.UUID{}, nil, false
 	}
@@ -53,7 +54,7 @@ func (h *FileHandler) resolve(w http.ResponseWriter, r *http.Request) (uuid.UUID
 }
 
 func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
-	serverUUID, client, ok := h.resolve(w, r)
+	serverUUID, client, ok := h.resolve(w, r, auth.PermFilesRead)
 	if !ok {
 		return
 	}
@@ -68,7 +69,7 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) Read(w http.ResponseWriter, r *http.Request) {
-	serverUUID, client, ok := h.resolve(w, r)
+	serverUUID, client, ok := h.resolve(w, r, auth.PermFilesRead)
 	if !ok {
 		return
 	}
@@ -84,7 +85,7 @@ func (h *FileHandler) Read(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) Write(w http.ResponseWriter, r *http.Request) {
-	serverUUID, client, ok := h.resolve(w, r)
+	serverUUID, client, ok := h.resolve(w, r, auth.PermFilesWrite)
 	if !ok {
 		return
 	}
@@ -104,7 +105,7 @@ func (h *FileHandler) Write(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	serverUUID, client, ok := h.resolve(w, r)
+	serverUUID, client, ok := h.resolve(w, r, auth.PermFilesWrite)
 	if !ok {
 		return
 	}
@@ -118,7 +119,7 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
-	serverUUID, client, ok := h.resolve(w, r)
+	serverUUID, client, ok := h.resolve(w, r, auth.PermFilesWrite)
 	if !ok {
 		return
 	}
@@ -137,7 +138,7 @@ type renameFileRequest struct {
 }
 
 func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
-	serverUUID, client, ok := h.resolve(w, r)
+	serverUUID, client, ok := h.resolve(w, r, auth.PermFilesWrite)
 	if !ok {
 		return
 	}

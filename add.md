@@ -262,6 +262,64 @@ ServerView's Overview tab, `window.confirm` before calling it (no custom
 modal system exists yet, and this is a one-off enough action that
 building one wasn't justified).
 
+**RBAC is real now — subusers can be granted per-server access, and two
+previously-real "any authenticated user can touch any server" holes got
+closed along the way.** `auth.SubuserChecker` implements the
+`PermissionChecker` interface that had sat unused since the original
+scaffold; it reads `server_subusers.permissions` (a JSONB array of
+strings — confirmed by reading `pgx/v5@v5.5.4`'s own `pgtype/json.go`
+that scanning `jsonb` into `*[]byte` copies the raw JSON bytes verbatim,
+since there was no local Postgres available with this project's schema
+to round-trip test against directly). Permission codes:
+`control.start`/`stop`/`restart`/`kill`, `console`, `files.read`/`write`,
+`schedules.read`/`write` — granular enough to say "this collaborator can
+restart the server and read the console but not touch files," coarse
+enough that nobody has to think about it as a real ACL system.
+`ServerHandler.List` now `LEFT JOIN`s `server_subusers` so a subuser
+actually sees servers they've been added to (previously: not at all,
+despite the table existing since day one). New `SubuserHandler`
+(`GET`/`POST`/`PATCH`/`DELETE` on `/servers/{uuid}/subusers`) is
+owner-or-admin only — a subuser can never grant themselves or anyone else
+more access, only the server's actual owner or a site admin manages the
+list. Frontend: a new "Sharing" tab in `ServerView` (`SubuserManager.tsx`)
+— add a collaborator by email, toggle permissions with the same
+`toggle-sw` switch `ScheduleManager` already uses. Following this
+project's established pattern of never gating UI on a client-known role
+(nothing here tracks `is_admin` in the frontend at all — Nodes/Allocations
+pages have always just let the backend 403 non-admins), the Sharing tab
+doesn't try to detect "am I the owner" client-side either: it calls
+`GET .../subusers`, and if that 403s (meaning the viewer isn't the owner
+or an admin), it shows "only the owner or an admin can manage sharing"
+instead of a broken list.
+
+**Two real, pre-existing "any authenticated user can touch any other
+user's server" bugs got found and fixed while wiring this up — not
+hypothetical, actually reachable:**
+1. `ServerHandler.Get` (`GET /servers/{uuid}`) and `ServerHandler.Power`
+   (`POST /servers/{uuid}/power`) had **no ownership check at all** —
+   any logged-in user could view any other user's server details, and,
+   worse, start/stop/restart/kill any other user's server just by
+   knowing (or guessing/enumerating) its UUID. Both now require
+   admin/owner/subuser-with-permission via `SubuserChecker.CanAccessServer`
+   (mapped per power action: `start`→`control.start`, etc.) or
+   `CanViewServer` (any subuser membership, for read-only `Get`).
+2. Both WS endpoints (`/ws/servers/{uuid}` stats, `/ws/servers/{uuid}/console`)
+   validated the JWT itself but never checked *which* server the token
+   holder was allowed to see — `authenticateWS` only proved "this is a
+   valid access token for *some* user," not "for *this* server." Any
+   authenticated user could subscribe to any other server's live stats or,
+   far more seriously, open its console and send arbitrary commands. Fixed
+   via a new `canAccessServerWS` check (stats needs `CanViewServer`,
+   console needs `CanAccessServer(..., auth.PermConsole)`), run right after
+   parsing the UUID and before `authenticateWS`'s claims are trusted for
+   anything server-specific.
+Both were found by grep'ing every handler for a `claims.IsAdmin`/`ownerID`
+check and noticing which ones were missing one entirely, not by a
+targeted audit — the same "grep for `r.Get`/`r.Post` registered outside
+the auth group" instinct from the earlier WS-auth gap, generalized to
+"grep for handlers that read `owner_id` but never compare it to anything."
+Worth doing again the next time a new server-scoped handler is added.
+
 **Nodes now have a real connectivity check, not just a `last_seen_at`
 column that nothing ever writes to** — the Status column used to show
 "Online"/"Never seen" based on `nodes.last_seen_at`, but no code path
@@ -419,6 +477,21 @@ systemd journal" into "click one button in the UI."
     `err != nil`, i.e. exactly the case the log line exists to describe.
     Branch on `err != nil` first and only touch the response value in the
     other branch.
+18. **Every server-scoped handler must check admin-or-owner-or-subuser-
+    with-permission — never just "is this request authenticated at all."**
+    `auth.SubuserChecker.CanAccessServer`/`CanViewServer` are the two
+    entry points (write-scoped action vs. read-only view); every handler
+    that takes a server UUID from the URL should call one of them before
+    doing anything, the same way `files.SafeJoin` is the one mandatory
+    gate for filesystem paths (convention 15). This was written down
+    *because* two handlers (`ServerHandler.Get`/`Power`) and both WS
+    routes shipped for a long time with no server-level check at all —
+    only proving "this JWT is valid," never "for *this* server." When
+    adding a new `/servers/{uuid}/...` route, grep this file's RBAC
+    section for the permission code that matches the action, and make
+    sure the handler actually calls `CanAccessServer`/`CanViewServer`
+    with it — don't assume "it's behind `auth.Middleware`" is enough,
+    that only proves who's asking, never what they're allowed to touch.
 
 ## Roadmap — rough priority order
 
@@ -458,14 +531,10 @@ systemd journal" into "click one button in the UI."
   low priority since it's an admin-only, low-frequency operation.
 
 ### Mid-term (real functionality gaps, not just missing UI)
-- RBAC is currently binary (`is_admin` or nothing) — `auth.PermissionChecker`
-  interface exists in `backend/internal/auth/rbac.go` but has zero
-  implementations wired into the router. `server_subusers` table exists
-  for per-server sharing but nothing reads it. `ServerHandler.Create`
-  in particular has no limit checks against anything resembling a quota.
-  API keys also have no scoping (`api_keys.permissions` JSONB column is
+- API keys still have no scoping (`api_keys.permissions` JSONB column is
   unused) — a key currently grants the same access the owning user has,
-  full stop.
+  full stop. `ServerHandler.Create` also still has no limit checks against
+  anything resembling a quota (a user can create unlimited servers).
 - gRPC migration for the daemon protocol (proto file is complete,
   `daemonclient`/`daemon/internal/api` are still the HTTP/WS stand-in) —
   low urgency, only matters once file-manager/backup streaming RPCs need
