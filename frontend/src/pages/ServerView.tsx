@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, connectConsoleSocket, connectServerSocket } from '../api/client';
+import { api, connectConsoleSocket, connectServerSocketWithRetry } from '../api/client';
 import { DatabaseManager } from '../components/DatabaseManager';
 import { FileManager } from '../components/FileManager';
 import { ScheduleManager } from '../components/ScheduleManager';
@@ -43,15 +43,7 @@ export function ServerView({ uuid, onBack }: Props) {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [uuid]);
 
-  useEffect(() => {
-    const ws = connectServerSocket(uuid);
-    ws.onmessage = (event) => {
-      try {
-        setLive(JSON.parse(event.data) as ResourceStats);
-      } catch {}
-    };
-    return () => ws.close();
-  }, [uuid]);
+  useEffect(() => connectServerSocketWithRetry<ResourceStats>(uuid, setLive), [uuid]);
 
   useEffect(() => {
     if (tab !== 'console') return;

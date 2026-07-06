@@ -1149,3 +1149,30 @@ actually flow into the create form.
   `*net.OpError` (never reached the host, credentials irrelevant) apart
   from a MySQL `Error 1045` (reached the host, credentials specifically
   rejected) apart from anything else, and phrases each case accordingly.
+- **Live server stats/online-offline status could permanently desync from
+  reality after any WebSocket hiccup** — two compounding bugs, both hit by
+  the same underlying complaint ("после F5 стопится", stats/online-offline
+  freeze and don't recover):
+  1. Frontend: `connectServerSocket` was opened exactly once per server
+     with zero reconnect logic anywhere (`ServerList.tsx`, `ServerView.tsx`).
+     Any drop — daemon restart, laptop sleep, flaky wifi, a proxy's WS idle
+     timeout, or even just a briefly-stale access token at the exact moment
+     of connecting — left the socket dead forever with no retry, freezing
+     `live` stats and the online/offline badge at their last known value
+     until a full manual page reload. Fixed by adding
+     `connectServerSocketWithRetry` (`client.ts`) — capped exponential
+     backoff, and a `tryRefresh()` call before every reconnect attempt
+     (not just the first) so a stale token can't wedge the retry loop
+     permanently either.
+  2. Daemon (the actual root cause of state going *wrong*, not just
+     stale): `Handlers.Stats` (`daemon/internal/api/handlers.go`) called
+     `Docker.Stats()` — live container stats — *before* `InspectState()`.
+     The moment a container isn't running (stopped, restarting, removed),
+     the stats call fails and the handler 502'd immediately, never
+     reaching the `InspectState` call that would've reported "offline".
+     `Hub.pollStats` on the panel side just `continue`s past any
+     `FetchStats` error, so the panel never learned the server had
+     actually gone offline — it kept broadcasting nothing, and the UI sat
+     on the last "running" snapshot indefinitely. Fixed by checking state
+     first and always reporting it; stats are only fetched (and only
+     required to succeed) when the container is confirmed running.

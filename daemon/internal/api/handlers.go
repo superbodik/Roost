@@ -145,14 +145,19 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
 	containerID := docker.ContainerNameFor(serverUUID)
 	ctx := r.Context()
 
-	stats, err := h.Docker.Stats(ctx, containerID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
 	state, err := h.Docker.InspectState(ctx, containerID)
 	if err != nil {
 		state = "offline"
+	}
+	if state != "running" {
+		writeJSON(w, http.StatusOK, resourceStatsResponse{ServerUUID: serverUUID, State: state})
+		return
+	}
+
+	stats, err := h.Docker.Stats(ctx, containerID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, resourceStatsResponse{ServerUUID: serverUUID, State: state})
+		return
 	}
 
 	var networkRx, networkTx int64

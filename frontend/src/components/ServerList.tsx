@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, connectServerSocket } from '../api/client';
+import { api, connectServerSocketWithRetry } from '../api/client';
 import type { PowerAction, ResourceStats, Server } from '../types';
 import { ServerCard } from './ServerCard';
 
@@ -33,19 +33,14 @@ export function ServerList({ onManage }: Props) {
   }, []);
 
   useEffect(() => {
-    const sockets = servers.map((server) => {
-      const ws = connectServerSocket(server.uuid);
-      ws.onmessage = (event) => {
-        try {
-          const stats: ResourceStats = JSON.parse(event.data);
-          setServers((prev) =>
-            prev.map((s) => (s.uuid === stats.server_uuid ? { ...s, live: stats, status: stats.state } : s)),
-          );
-        } catch {}
-      };
-      return ws;
-    });
-    return () => sockets.forEach((ws) => ws.close());
+    const closers = servers.map((server) =>
+      connectServerSocketWithRetry<ResourceStats>(server.uuid, (stats) => {
+        setServers((prev) =>
+          prev.map((s) => (s.uuid === stats.server_uuid ? { ...s, live: stats, status: stats.state } : s)),
+        );
+      }),
+    );
+    return () => closers.forEach((close) => close());
   }, [servers.map((s) => s.uuid).join(',')]);
 
   const filtered = useMemo(() => {

@@ -350,7 +350,7 @@ export const api = {
     request<void>(`/servers/${uuid}/subusers/${id}`, { method: 'DELETE' }),
 };
 
-export { storeTokens, clearTokens };
+export { storeTokens, clearTokens, tryRefresh };
 
 function wsToken(): string {
   return localStorage.getItem('access_token') ?? '';
@@ -359,6 +359,43 @@ function wsToken(): string {
 export function connectServerSocket(uuid: string): WebSocket {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
   return new WebSocket(`${proto}://${window.location.host}/ws/servers/${uuid}?token=${wsToken()}`);
+}
+
+export function connectServerSocketWithRetry<T>(
+  uuid: string,
+  onMessage: (data: T) => void,
+): () => void {
+  let closed = false;
+  let socket: WebSocket | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let attempt = 0;
+
+  async function open() {
+    if (closed) return;
+    if (attempt > 0) await tryRefresh();
+    if (closed) return;
+    socket = connectServerSocket(uuid);
+    socket.onmessage = (event) => {
+      try {
+        onMessage(JSON.parse(event.data) as T);
+        attempt = 0;
+      } catch {}
+    };
+    socket.onclose = () => {
+      if (closed) return;
+      const delay = Math.min(1000 * 2 ** attempt, 15000);
+      attempt += 1;
+      retryTimer = setTimeout(open, delay);
+    };
+  }
+
+  open();
+
+  return () => {
+    closed = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    socket?.close();
+  };
 }
 
 export function connectConsoleSocket(uuid: string): WebSocket {
