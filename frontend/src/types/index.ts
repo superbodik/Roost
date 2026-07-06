@@ -152,6 +152,7 @@ export interface CreateAllocationRequest {
 export interface ApiKey {
   id: number;
   name: string;
+  permissions: string[];
   last_used_at: string | null;
   created_at: string;
 }
@@ -215,6 +216,12 @@ export const SUBUSER_PERMISSIONS: { code: string; label: string }[] = [
   { code: 'files.write', label: 'Manage files' },
   { code: 'schedules.read', label: 'View schedules' },
   { code: 'schedules.write', label: 'Manage schedules' },
+];
+
+export const API_KEY_PERMISSIONS: { code: string; label: string }[] = [
+  { code: 'servers.read', label: 'List/view servers' },
+  { code: 'servers.write', label: 'Create/delete servers' },
+  ...SUBUSER_PERMISSIONS,
 ];
 
 export interface CreateScheduleRequest {

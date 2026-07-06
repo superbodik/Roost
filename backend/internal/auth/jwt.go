@@ -23,6 +23,20 @@ type Claims struct {
 	IsAdmin bool      `json:"is_admin"`
 	Type    TokenType `json:"type"`
 	jwt.RegisteredClaims
+
+	KeyPermissions *[]string `json:"-"`
+}
+
+func (c *Claims) HasKeyPermission(code string) bool {
+	if c.KeyPermissions == nil {
+		return true
+	}
+	for _, p := range *c.KeyPermissions {
+		if p == code {
+			return true
+		}
+	}
+	return false
 }
 
 type TokenManager struct {

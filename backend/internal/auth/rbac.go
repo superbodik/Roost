@@ -18,6 +18,9 @@ const (
 	PermFilesWrite     = "files.write"
 	PermSchedulesRead  = "schedules.read"
 	PermSchedulesWrite = "schedules.write"
+
+	PermServersRead  = "servers.read"
+	PermServersWrite = "servers.write"
 )
 
 type PermissionChecker interface {

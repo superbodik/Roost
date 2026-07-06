@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { ApiKey, CreateApiKeyResponse, TwoFASetup, TwoFAStatus } from '../types';
+import { API_KEY_PERMISSIONS } from '../types';
 
 export function Account() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [name, setName] = useState('');
+  const [keyPermissions, setKeyPermissions] = useState<string[]>([]);
   const [justCreated, setJustCreated] = useState<CreateApiKeyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -32,15 +34,22 @@ export function Account() {
     setSubmitting(true);
     setError(null);
     try {
-      const created = await api.createApiKey(name);
+      const created = await api.createApiKey(name, keyPermissions);
       setJustCreated(created);
       setName('');
+      setKeyPermissions([]);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function toggleKeyPermission(code: string) {
+    setKeyPermissions((list) =>
+      list.includes(code) ? list.filter((p) => p !== code) : [...list, code],
+    );
   }
 
   async function handleDelete(id: number) {
@@ -117,21 +126,28 @@ export function Account() {
 
           <div className="api-list">
             {keys.map((k) => (
-              <div className="api-item" key={k.id}>
-                <span className="api-memo">{k.name}</span>
-                <span className="api-used">
-                  {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never used'}
+              <div className="api-item" key={k.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span className="api-memo">{k.name}</span>
+                  <span className="api-used">
+                    {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never used'}
+                  </span>
+                  <button className="file-act-btn del" onClick={() => handleDelete(k.id)}>
+                    Delete
+                  </button>
+                </div>
+                <span className="srv-desc" style={{ fontSize: 11 }}>
+                  {k.permissions.length === 0
+                    ? 'Full access (same as your account)'
+                    : k.permissions.join(', ')}
                 </span>
-                <button className="file-act-btn del" onClick={() => handleDelete(k.id)}>
-                  Delete
-                </button>
               </div>
             ))}
             {keys.length === 0 && <p className="srv-desc">No API keys yet.</p>}
           </div>
 
           <form onSubmit={handleCreate} style={{ marginTop: 16 }}>
-            <div className="sfield">
+            <div className="sfield" style={{ marginBottom: 14 }}>
               <label htmlFor="key-name">New key name</label>
               <input
                 id="key-name"
@@ -140,6 +156,26 @@ export function Account() {
                 placeholder="e.g. CI deploy"
                 required
               />
+            </div>
+            <p className="srv-desc" style={{ marginBottom: 8 }}>
+              Leave all unchecked for full access (same as your account). Check specific
+              permissions to restrict this key.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+              {API_KEY_PERMISSIONS.map((p) => (
+                <label
+                  key={p.code}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+                >
+                  <div
+                    className={`toggle-sw ${keyPermissions.includes(p.code) ? 'on' : ''}`}
+                    onClick={() => toggleKeyPermission(p.code)}
+                  >
+                    <div className="toggle-knob" />
+                  </div>
+                  {p.label}
+                </label>
+              ))}
             </div>
             {error && (
               <div className="login-error show" style={{ marginTop: 12 }}>

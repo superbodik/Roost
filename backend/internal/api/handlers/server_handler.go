@@ -29,6 +29,10 @@ func (h *ServerHandler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if !claims.HasKeyPermission(auth.PermServersRead) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	rows, err := h.DB.Query(r.Context(), `
 		SELECT DISTINCT s.id, s.uuid, s.uuid_short, s.name, s.description, s.owner_id,
@@ -83,6 +87,10 @@ func (h *ServerHandler) Create(w http.ResponseWriter, r *http.Request) {
 	claims, ok := auth.FromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !claims.HasKeyPermission(auth.PermServersWrite) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -203,6 +211,10 @@ func (h *ServerHandler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if !claims.HasKeyPermission(auth.PermServersRead) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "uuid"))
 	if err != nil {
@@ -248,6 +260,10 @@ func (h *ServerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	claims, ok := auth.FromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !claims.HasKeyPermission(auth.PermServersWrite) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -340,7 +356,7 @@ func (h *ServerHandler) Power(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "server not found", http.StatusNotFound)
 		return
 	}
-	if !h.Subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission) {
+	if !claims.HasKeyPermission(permission) || !h.Subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

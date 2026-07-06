@@ -20,10 +20,11 @@ type APIKeyHandler struct {
 }
 
 type apiKeySummary struct {
-	ID         int64      `json:"id"`
-	Name       string     `json:"name"`
-	LastUsedAt *time.Time `json:"last_used_at"`
-	CreatedAt  time.Time  `json:"created_at"`
+	ID          int64      `json:"id"`
+	Name        string     `json:"name"`
+	Permissions []string   `json:"permissions"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 func (h *APIKeyHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +35,7 @@ func (h *APIKeyHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.DB.Query(r.Context(),
-		`SELECT id, name, last_used_at, created_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
+		`SELECT id, name, permissions, last_used_at, created_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
 		claims.UserID)
 	if err != nil {
 		http.Error(w, "failed to list api keys", http.StatusInternalServerError)
@@ -45,10 +46,13 @@ func (h *APIKeyHandler) List(w http.ResponseWriter, r *http.Request) {
 	keys := make([]apiKeySummary, 0)
 	for rows.Next() {
 		var k apiKeySummary
-		if err := rows.Scan(&k.ID, &k.Name, &k.LastUsedAt, &k.CreatedAt); err != nil {
+		var raw []byte
+		if err := rows.Scan(&k.ID, &k.Name, &raw, &k.LastUsedAt, &k.CreatedAt); err != nil {
 			http.Error(w, "failed to read api keys", http.StatusInternalServerError)
 			return
 		}
+		k.Permissions = []string{}
+		_ = json.Unmarshal(raw, &k.Permissions)
 		keys = append(keys, k)
 	}
 
@@ -56,7 +60,8 @@ func (h *APIKeyHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 type createAPIKeyRequest struct {
-	Name string `json:"name"`
+	Name        string   `json:"name"`
+	Permissions []string `json:"permissions"`
 }
 
 func (h *APIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +76,14 @@ func (h *APIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
+	if req.Permissions == nil {
+		req.Permissions = []string{}
+	}
+	permissionsJSON, err := json.Marshal(req.Permissions)
+	if err != nil {
+		http.Error(w, "invalid permissions", http.StatusBadRequest)
+		return
+	}
 
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -82,9 +95,9 @@ func (h *APIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	tokenHash := hex.EncodeToString(sum[:])
 
 	var id int64
-	err := h.DB.QueryRow(r.Context(),
-		`INSERT INTO api_keys (user_id, name, token_hash) VALUES ($1, $2, $3) RETURNING id`,
-		claims.UserID, req.Name, tokenHash,
+	err = h.DB.QueryRow(r.Context(),
+		`INSERT INTO api_keys (user_id, name, token_hash, permissions) VALUES ($1, $2, $3, $4) RETURNING id`,
+		claims.UserID, req.Name, tokenHash, permissionsJSON,
 	).Scan(&id)
 	if err != nil {
 		http.Error(w, "failed to create api key", http.StatusInternalServerError)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -188,17 +189,23 @@ func resolveAPIKey(pool *pgxpool.Pool) auth.APIKeyResolver {
 		var userID int64
 		var email string
 		var isAdmin, isActive bool
+		var permsRaw []byte
 		err := pool.QueryRow(ctx, `
-			SELECT u.id, u.email, u.is_admin, u.is_active
+			SELECT u.id, u.email, u.is_admin, u.is_active, k.permissions
 			FROM api_keys k JOIN users u ON u.id = k.user_id
 			WHERE k.token_hash = $1`, tokenHash,
-		).Scan(&userID, &email, &isAdmin, &isActive)
+		).Scan(&userID, &email, &isAdmin, &isActive, &permsRaw)
 		if err != nil || !isActive {
 			return nil, auth.ErrInvalidToken
 		}
 
 		_, _ = pool.Exec(ctx, `UPDATE api_keys SET last_used_at = now() WHERE token_hash = $1`, tokenHash)
 
-		return &auth.Claims{UserID: userID, Email: email, IsAdmin: isAdmin, Type: auth.TokenAccess}, nil
+		claims := &auth.Claims{UserID: userID, Email: email, IsAdmin: isAdmin, Type: auth.TokenAccess}
+		var perms []string
+		if json.Unmarshal(permsRaw, &perms) == nil && len(perms) > 0 {
+			claims.KeyPermissions = &perms
+		}
+		return claims, nil
 	}
 }

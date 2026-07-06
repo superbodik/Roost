@@ -211,10 +211,10 @@ export const api = {
 
   listApiKeys: () => request<ApiKey[]>('/account/api-keys'),
 
-  createApiKey: (name: string) =>
+  createApiKey: (name: string, permissions: string[]) =>
     request<CreateApiKeyResponse>('/account/api-keys', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, permissions }),
     }),
 
   deleteApiKey: (id: number) => request<void>(`/account/api-keys/${id}`, { method: 'DELETE' }),

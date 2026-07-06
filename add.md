@@ -320,6 +320,29 @@ the auth group" instinct from the earlier WS-auth gap, generalized to
 "grep for handlers that read `owner_id` but never compare it to anything."
 Worth doing again the next time a new server-scoped handler is added.
 
+**API keys are scoped now too, using the same permission codes as
+subusers.** `auth.Claims` grew a `KeyPermissions *[]string` field — `nil`
+means "unrestricted" (every JWT session, and any API key created with an
+empty permissions list, which is what all pre-existing keys already have
+by default), a non-nil slice means "only these codes." `Claims.HasKeyPermission`
+is the single check; every server-scoped handler now does
+`claims.HasKeyPermission(permission) && Subusers.CanAccessServer(...)` —
+two independent conditions, both must pass. This matters for a subtlety
+that's easy to get backwards: `CanAccessServer`/`CanViewServer` short-
+circuit true for `claims.IsAdmin`, so an *admin's* scoped API key still
+needs `HasKeyPermission` checked as a separate condition, not folded into
+the same call — otherwise an admin's "read-only" key would silently
+regain full access purely from being an admin, defeating the entire
+point of scoping it down. Reused the exact same permission codes
+(`control.*`, `console`, `files.*`, `schedules.*`) plus two new
+account-wide ones for actions that aren't tied to one server yet at
+request time — `servers.read` (list/get) and `servers.write`
+(create/delete). Frontend: Account page's "New key name" form grew the
+same `toggle-sw` permission picker `SubuserManager` uses, with "leave
+everything unchecked for full access" as the explicit default explained
+in the UI (matches the empty-array-means-unrestricted backend
+convention, so it doesn't need its own migration for existing keys).
+
 **Nodes now have a real connectivity check, not just a `last_seen_at`
 column that nothing ever writes to** — the Status column used to show
 "Online"/"Never seen" based on `nodes.last_seen_at`, but no code path
@@ -492,6 +515,33 @@ systemd journal" into "click one button in the UI."
     sure the handler actually calls `CanAccessServer`/`CanViewServer`
     with it — don't assume "it's behind `auth.Middleware`" is enough,
     that only proves who's asking, never what they're allowed to touch.
+19. **`claims.IsAdmin`-style bypasses inside a permission-check function
+    must never be the only gate when a second, independent restriction
+    (like API-key scoping) also applies.** `SubuserChecker.CanAccessServer`
+    correctly short-circuits true for admins — that's right for "does
+    this *user* have access to this server." But `Claims.HasKeyPermission`
+    answers a different question ("is this *specific credential* allowed
+    to do this"), and it has to be checked as its own separate condition
+    at every call site, not merged into `CanAccessServer` itself. If it
+    were merged and short-circuited the same way, a deliberately scoped-
+    down admin API key would silently regain full access the moment the
+    underlying user happened to be an admin — exactly the scenario
+    scoping exists to prevent. Two independent questions need two
+    independent checks, even when both eventually get `&&`-ed together
+    at the call site.
+20. **A JSONB permissions/scope column's "empty array" state should mean
+    whatever preserves existing rows' behavior, not whatever seems most
+    "secure by default."** `api_keys.permissions` already defaulted to
+    `'[]'` for every key created before scoping existed; if empty-array
+    had been chosen to mean "no permissions" (the more obviously "secure"
+    reading), every previously-issued API key would have silently broken
+    the moment this feature shipped, with no migration path since there's
+    no way to distinguish "created before scoping" from "deliberately
+    scoped to nothing" after the fact. Chose empty-array = unrestricted
+    instead, specifically because it's what every existing row already
+    means. When adding scoping to an existing nullable/default-empty
+    column, work out what the *current* rows' behavior is first, then
+    pick the encoding that doesn't silently change it.
 
 ## Roadmap — rough priority order
 
@@ -531,10 +581,8 @@ systemd journal" into "click one button in the UI."
   low priority since it's an admin-only, low-frequency operation.
 
 ### Mid-term (real functionality gaps, not just missing UI)
-- API keys still have no scoping (`api_keys.permissions` JSONB column is
-  unused) — a key currently grants the same access the owning user has,
-  full stop. `ServerHandler.Create` also still has no limit checks against
-  anything resembling a quota (a user can create unlimited servers).
+- `ServerHandler.Create` still has no limit checks against anything
+  resembling a quota (a user can create unlimited servers).
 - gRPC migration for the daemon protocol (proto file is complete,
   `daemonclient`/`daemon/internal/api` are still the HTTP/WS stand-in) —
   low urgency, only matters once file-manager/backup streaming RPCs need

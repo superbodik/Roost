@@ -50,7 +50,7 @@ func (h *ScheduleHandler) resolveServer(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "server not found", http.StatusNotFound)
 		return 0, false
 	}
-	if !h.Subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission) {
+	if !claims.HasKeyPermission(permission) || !h.Subusers.CanAccessServer(r.Context(), claims, ownerID, serverID, permission) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return 0, false
 	}
