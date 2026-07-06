@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { api } from '../api/client';
 import type { ApiKey, CreateApiKeyResponse, TwoFASetup, TwoFAStatus } from '../types';
 import { API_KEY_PERMISSIONS } from '../types';
@@ -13,6 +14,7 @@ export function Account() {
 
   const [twofaStatus, setTwofaStatus] = useState<TwoFAStatus | null>(null);
   const [twofaSetup, setTwofaSetup] = useState<TwoFASetup | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState('');
   const [disablePassword, setDisablePassword] = useState('');
   const [twofaError, setTwofaError] = useState<string | null>(null);
@@ -64,10 +66,18 @@ export function Account() {
   async function handleStartSetup() {
     setTwofaError(null);
     try {
-      setTwofaSetup(await api.setup2FA());
+      const setup = await api.setup2FA();
+      setTwofaSetup(setup);
+      setQrCodeUrl(await QRCode.toDataURL(setup.otpauth_url, { width: 220, margin: 1 }));
     } catch (err) {
       setTwofaError(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  function handleCancelSetup() {
+    setTwofaSetup(null);
+    setQrCodeUrl(null);
+    setVerifyCode('');
   }
 
   async function handleVerify(e: React.FormEvent) {
@@ -76,8 +86,7 @@ export function Account() {
     setTwofaError(null);
     try {
       await api.verify2FA(verifyCode);
-      setTwofaSetup(null);
-      setVerifyCode('');
+      handleCancelSetup();
       refreshTwofa();
     } catch (err) {
       setTwofaError(err instanceof Error ? err.message : String(err));
@@ -228,6 +237,17 @@ export function Account() {
               <p className="srv-desc" style={{ marginBottom: 10 }}>
                 Scan this with your authenticator app, or add it manually with the secret below.
               </p>
+              {qrCodeUrl && (
+                <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                  <img
+                    src={qrCodeUrl}
+                    alt="2FA setup QR code"
+                    width={220}
+                    height={220}
+                    style={{ borderRadius: 10 }}
+                  />
+                </div>
+              )}
               <div className="api-item" style={{ marginBottom: 8 }}>
                 <span className="api-key">{twofaSetup.otpauth_url}</span>
                 <button
@@ -267,7 +287,7 @@ export function Account() {
                   >
                     {twofaBusy ? 'Verifying…' : 'Verify & enable'}
                   </button>
-                  <button className="btn-sm" type="button" onClick={() => setTwofaSetup(null)}>
+                  <button className="btn-sm" type="button" onClick={handleCancelSetup}>
                     Cancel
                   </button>
                 </div>

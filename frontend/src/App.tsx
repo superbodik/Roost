@@ -31,6 +31,7 @@ export function App() {
   const [user, setUser] = useState<StoredUser | null>(() => loadUser());
   const [view, setView] = useState<View>('servers');
   const [activeServer, setActiveServer] = useState<string | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   function handleLogout() {
     clearTokens();
@@ -40,6 +41,7 @@ export function App() {
   function goTo(next: View) {
     setActiveServer(null);
     setView(next);
+    setMobileNavOpen(false);
   }
 
   if (!user) {
@@ -54,6 +56,13 @@ export function App() {
       </div>
 
       <header className="topbar">
+        <button
+          className="mobile-nav-toggle"
+          onClick={() => setMobileNavOpen((v) => !v)}
+          aria-label="Toggle navigation"
+        >
+          ☰
+        </button>
         <div className="topbar-logo">
           <span className="name">Roost</span>
           <span className="tag">Panel</span>
@@ -89,7 +98,11 @@ export function App() {
       </header>
 
       <div className="shell-body">
-        <aside className="sidebar">
+        <div
+          className={`sidebar-backdrop ${mobileNavOpen ? 'show' : ''}`}
+          onClick={() => setMobileNavOpen(false)}
+        />
+        <aside className={`sidebar ${mobileNavOpen ? 'mobile-open' : ''}`}>
           <div className="nav-section">
             <div className="nav-section-label">Overview</div>
             <div

@@ -534,6 +534,43 @@ more real, if lower-severity, resource-exhaustion gaps.**
   it's a one-line check that catches an entire class of accidental-leak
   bug before it ships.
 
+**2FA setup now actually shows a QR code, and there's real mobile/tablet
+navigation — neither existed before, both found from a user screenshot,
+not a report of "it's broken."**
+- The 2FA setup screen only ever showed the raw `otpauth://` URL and
+  secret as text — no image, despite the UI text literally saying "scan
+  this with your authenticator app." Added `qrcode` (client-side only,
+  generates a data URL from a canvas — no network call, no CDN, nothing
+  server-side needs to change) and render it as an `<img>` above the
+  copyable text rows, which stay for anyone who'd rather type the secret
+  in by hand.
+- **`panel.css` had exactly one breakpoint (900px), and its only mobile
+  behavior was `.sidebar { display: none; }`** — with no hamburger, no
+  drawer, nothing to bring navigation back. Under 900px wide, a user
+  could never leave whatever page they landed on. Verified this was
+  real (not just a code-reading guess) by actually launching the Vite
+  dev server and screenshotting both a 375px and a 1280px viewport with
+  Playwright before and after the fix — the `run` skill's guidance to
+  drive the app rather than trust a clean build, applied literally,
+  since a CSS/layout change is exactly the kind of thing `tsc`/`vite
+  build` passing tells you nothing about. Added a `.mobile-nav-toggle`
+  hamburger button (topbar, hidden above 900px via the same breakpoint),
+  a slide-in `.sidebar.mobile-open` drawer (`transform: translateX`,
+  solid `--bg-2` background instead of the desktop sidebar's translucent
+  tint, since it now sits *over* page content instead of beside it), and
+  a `.sidebar-backdrop` to close it on outside-tap. `goTo()` already
+  centralized every nav click, so closing the drawer on navigate was a
+  one-line addition there, not a per-nav-item change. Also added a
+  520px breakpoint (topbar breadcrumb/username/separator hide, stat
+  cards and the power-button grid reflow to 2 columns) since 900px alone
+  left small-phone widths cramped.
+- No project `run` skill existed for this repo yet (checked before
+  falling back to the generic browser-driven pattern) — worth generating
+  one via `/run-skill-generator` next time this comes up, so "start the
+  dev server, screenshot at N viewports" doesn't need re-deriving
+  (installing Playwright, finding the proxy config, etc.) from scratch
+  again.
+
 **Once the frontend could actually display backend error text (previous
 entry), the next problem was that some backend messages were still
 deliberately vague.** `ServerHandler.Create`/`Power`'s "node unavailable"
@@ -878,6 +915,13 @@ actually flow into the create form.
   English-only — if the Russian-speaking installer experience matters,
   the dashboard probably should too, eventually).
 - SFTP server on wingsd (mentioned in the original spec, not started).
+- `npm audit` flags `esbuild`/`vite` (moderate/high, dev-server-only —
+  lets any website the developer visits send requests to the local Vite
+  dev server and read the response; doesn't affect the production
+  build/nginx-served output at all). Fix requires a major Vite version
+  bump (`npm audit fix --force` → `vite@8`); deliberately not done blind
+  given the breaking-change risk to the whole build pipeline — worth
+  doing as its own dedicated upgrade-and-test pass, not bundled in.
 
 ## Things I keep having to re-explain to myself — write them down once
 
