@@ -203,6 +203,9 @@ export const api = {
   createNode: (payload: CreateNodeRequest) =>
     request<CreateNodeResponse>('/nodes', { method: 'POST', body: JSON.stringify(payload) }),
 
+  updateNode: (id: number, payload: CreateNodeRequest) =>
+    request<void>(`/nodes/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
   deleteNode: (id: number) => request<void>(`/nodes/${id}`, { method: 'DELETE' }),
 
   checkNodeStatus: (id: number) => request<NodeStatus>(`/nodes/${id}/status`),

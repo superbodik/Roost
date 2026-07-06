@@ -17,6 +17,7 @@ export function Nodes() {
   const [form, setForm] = useState({
     name: '',
     fqdn: '',
+    scheme: 'http',
     location_id: 1,
     memory_mb: 8192,
     disk_mb: 102400,
@@ -32,6 +33,45 @@ export function Nodes() {
   const [statuses, setStatuses] = useState<Record<number, NodeStatus | 'checking'>>({});
   const [expandedNodeId, setExpandedNodeId] = useState<number | null>(null);
   const [deletingNodeId, setDeletingNodeId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    fqdn: '',
+    scheme: 'http',
+    daemon_port: 8443,
+    memory_mb: 0,
+    disk_mb: 0,
+  });
+  const [savingNodeId, setSavingNodeId] = useState<number | null>(null);
+
+  function toggleExpand(node: Node) {
+    if (expandedNodeId === node.id) {
+      setExpandedNodeId(null);
+      return;
+    }
+    setExpandedNodeId(node.id);
+    setEditForm({
+      name: node.name,
+      fqdn: node.fqdn,
+      scheme: node.scheme,
+      daemon_port: node.daemon_port,
+      memory_mb: node.memory_mb,
+      disk_mb: node.disk_mb,
+    });
+  }
+
+  async function handleSaveNode(node: Node) {
+    setSavingNodeId(node.id);
+    setError(null);
+    try {
+      await api.updateNode(node.id, { ...editForm, location_id: 1 });
+      setExpandedNodeId(null);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingNodeId(null);
+    }
+  }
 
   async function handleDeleteNode(node: Node) {
     if (!window.confirm(`Delete node "${node.name}"? This only removes it from the panel — it does not uninstall wingsd from the machine.`)) {
@@ -210,6 +250,17 @@ export function Nodes() {
               />
             </div>
             <div className="sfield">
+              <label htmlFor="node-scheme">wingsd scheme</label>
+              <select
+                id="node-scheme"
+                value={form.scheme}
+                onChange={(e) => setForm((f) => ({ ...f, scheme: e.target.value }))}
+              >
+                <option value="http">http (default — no TLS cert configured on the node)</option>
+                <option value="https">https (only if WINGSD_TLS_CERT/KEY are set)</option>
+              </select>
+            </div>
+            <div className="sfield">
               <label htmlFor="node-memory">Memory (MB)</label>
               <input
                 id="node-memory"
@@ -267,7 +318,7 @@ export function Nodes() {
                   <span
                     className="db-name"
                     style={{ cursor: 'pointer' }}
-                    onClick={() => setExpandedNodeId(expanded ? null : node.id)}
+                    onClick={() => toggleExpand(node)}
                   >
                     {node.name}
                   </span>
@@ -304,15 +355,87 @@ export function Nodes() {
                   </span>
                 </div>
                 {expanded && (
-                  <div style={{ padding: '10px 18px', borderBottom: '1px solid rgba(192,100,120,.06)' }}>
-                    <button
-                      className="btn-danger"
-                      style={{ width: 'auto', padding: '8px 16px' }}
-                      disabled={deletingNodeId === node.id}
-                      onClick={() => handleDeleteNode(node)}
-                    >
-                      {deletingNodeId === node.id ? 'Deleting…' : 'Delete node'}
-                    </button>
+                  <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(192,100,120,.06)' }}>
+                    <div className="settings-grid" style={{ marginBottom: 14 }}>
+                      <div className="sfield">
+                        <label htmlFor={`edit-name-${node.id}`}>Name</label>
+                        <input
+                          id={`edit-name-${node.id}`}
+                          value={editForm.name}
+                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                        />
+                      </div>
+                      <div className="sfield">
+                        <label htmlFor={`edit-fqdn-${node.id}`}>FQDN / IP</label>
+                        <input
+                          id={`edit-fqdn-${node.id}`}
+                          value={editForm.fqdn}
+                          onChange={(e) => setEditForm((f) => ({ ...f, fqdn: e.target.value }))}
+                        />
+                      </div>
+                      <div className="sfield">
+                        <label htmlFor={`edit-scheme-${node.id}`}>wingsd scheme</label>
+                        <select
+                          id={`edit-scheme-${node.id}`}
+                          value={editForm.scheme}
+                          onChange={(e) => setEditForm((f) => ({ ...f, scheme: e.target.value }))}
+                        >
+                          <option value="http">http (no TLS cert on the node)</option>
+                          <option value="https">https (WINGSD_TLS_CERT/KEY set)</option>
+                        </select>
+                      </div>
+                      <div className="sfield">
+                        <label htmlFor={`edit-port-${node.id}`}>Daemon port</label>
+                        <input
+                          id={`edit-port-${node.id}`}
+                          type="number"
+                          value={editForm.daemon_port}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, daemon_port: Number(e.target.value) }))
+                          }
+                        />
+                      </div>
+                      <div className="sfield">
+                        <label htmlFor={`edit-memory-${node.id}`}>Memory (MB)</label>
+                        <input
+                          id={`edit-memory-${node.id}`}
+                          type="number"
+                          value={editForm.memory_mb}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, memory_mb: Number(e.target.value) }))
+                          }
+                        />
+                      </div>
+                      <div className="sfield">
+                        <label htmlFor={`edit-disk-${node.id}`}>Disk (MB)</label>
+                        <input
+                          id={`edit-disk-${node.id}`}
+                          type="number"
+                          value={editForm.disk_mb}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, disk_mb: Number(e.target.value) }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn-primary"
+                        style={{ width: 'auto', padding: '8px 16px' }}
+                        disabled={savingNodeId === node.id}
+                        onClick={() => handleSaveNode(node)}
+                      >
+                        {savingNodeId === node.id ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        className="btn-danger"
+                        style={{ width: 'auto', padding: '8px 16px' }}
+                        disabled={deletingNodeId === node.id}
+                        onClick={() => handleDeleteNode(node)}
+                      >
+                        {deletingNodeId === node.id ? 'Deleting…' : 'Delete node'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

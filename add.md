@@ -414,6 +414,30 @@ capable of displaying anything more specific before assuming the
 backend fix didn't work or guessing at new backend causes — the wiring
 between the two is exactly as fixable as either end alone.
 
+**Found the actual root cause of the live "POST /servers failed: 502"
+reports, once the error message could finally reach the screen:
+`wingsd` only speaks HTTPS if `WINGSD_TLS_CERT`/`WINGSD_TLS_KEY` are set
+(`daemon/cmd/wingsd/main.go` falls back to plain HTTP with a log warning
+otherwise), and `scripts/daemon.sh` never sets those up — every fresh
+install runs the daemon in plain-HTTP fallback mode. But
+`NodeHandler.Create` defaulted every new node's `scheme` to `"https"`
+regardless, and the "Add node" form had no field to override it. Every
+single node created through the normal install-and-click-Add-node flow
+was silently misconfigured to speak HTTPS to a daemon that was only
+ever listening on plain HTTP — a systemic default mismatch, not a
+one-off misconfiguration. Fixed the default (now `"http"`, matching what
+actually happens without extra TLS setup) and added a scheme selector to
+the Add Node form so anyone who *has* configured `WINGSD_TLS_CERT/KEY`
+can still pick `https`. Also added `PATCH /nodes/{id}` (admin-only, name/
+fqdn/scheme/daemon_port/memory/disk — deliberately excludes the daemon
+token, which doesn't need to change) so a node created with the wrong
+scheme can be corrected in place from the same expanded panel the delete
+button lives in, without regenerating its token or reinstalling `wingsd`
+on the machine. This is the kind of default that's invisible until
+someone hits it, and then invisible *again* until the frontend can show
+what actually broke — worth remembering alongside the error-surfacing
+fix above, since neither one alone would have made this findable.
+
 **Once the frontend could actually display backend error text (previous
 entry), the next problem was that some backend messages were still
 deliberately vague.** `ServerHandler.Create`/`Power`'s "node unavailable"

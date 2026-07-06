@@ -44,7 +44,7 @@ func (h *NodeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Scheme == "" {
-		req.Scheme = "https"
+		req.Scheme = "http"
 	}
 	if req.DaemonPort == 0 {
 		req.DaemonPort = 8443
@@ -128,6 +128,59 @@ func (h *NodeHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, nodes)
+}
+
+type updateNodeRequest struct {
+	Name       string `json:"name"`
+	FQDN       string `json:"fqdn"`
+	Scheme     string `json:"scheme"`
+	DaemonPort int    `json:"daemon_port"`
+	MemoryMB   int64  `json:"memory_mb"`
+	DiskMB     int64  `json:"disk_mb"`
+}
+
+func (h *NodeHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid node id", http.StatusBadRequest)
+		return
+	}
+
+	var req updateNodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" || req.FQDN == "" || req.Scheme == "" || req.DaemonPort == 0 {
+		http.Error(w, "name, fqdn, scheme and daemon_port are required", http.StatusBadRequest)
+		return
+	}
+
+	tag, err := h.DB.Exec(r.Context(), `
+		UPDATE nodes SET name = $1, fqdn = $2, scheme = $3, daemon_port = $4,
+		                 memory_mb = $5, disk_mb = $6
+		WHERE id = $7`,
+		req.Name, req.FQDN, req.Scheme, req.DaemonPort, req.MemoryMB, req.DiskMB, id,
+	)
+	if err != nil {
+		http.Error(w, "failed to update node", http.StatusInternalServerError)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		http.Error(w, "node not found", http.StatusNotFound)
+		return
+	}
+
+	if claims, ok := auth.FromContext(r.Context()); ok {
+		activity.Record(r.Context(), h.DB, activity.Entry{
+			ActorUserID: &claims.UserID,
+			NodeID:      &id,
+			Event:       "node.update",
+			IPAddress:   activity.RequestIP(r),
+		})
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *NodeHandler) Delete(w http.ResponseWriter, r *http.Request) {
