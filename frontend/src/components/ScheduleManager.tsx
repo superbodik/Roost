@@ -19,7 +19,9 @@ export function ScheduleManager({ uuid }: Props) {
     cron_day_of_week: '*',
     cron_day_of_month: '*',
     only_when_online: true,
+    taskType: 'power' as 'power' | 'command',
     action: 'restart',
+    command: '',
   });
 
   function refresh() {
@@ -43,7 +45,11 @@ export function ScheduleManager({ uuid }: Props) {
         cron_day_of_week: form.cron_day_of_week,
         cron_day_of_month: form.cron_day_of_month,
         only_when_online: form.only_when_online,
-        tasks: [{ action: 'power', payload: form.action, time_offset_seconds: 0 }],
+        tasks: [
+          form.taskType === 'power'
+            ? { action: 'power', payload: form.action, time_offset_seconds: 0 }
+            : { action: 'command', payload: form.command, time_offset_seconds: 0 },
+        ],
       });
       setShowForm(false);
       setForm((f) => ({ ...f, name: '' }));
@@ -104,18 +110,44 @@ export function ScheduleManager({ uuid }: Props) {
                 />
               </div>
               <div className="sfield">
-                <label htmlFor="sch-action">Action</label>
+                <label htmlFor="sch-task-type">Task type</label>
                 <select
-                  id="sch-action"
-                  value={form.action}
-                  onChange={(e) => setForm((f) => ({ ...f, action: e.target.value }))}
+                  id="sch-task-type"
+                  value={form.taskType}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, taskType: e.target.value as 'power' | 'command' }))
+                  }
                 >
-                  <option value="start">Start</option>
-                  <option value="stop">Stop</option>
-                  <option value="restart">Restart</option>
-                  <option value="kill">Kill</option>
+                  <option value="power">Power action</option>
+                  <option value="command">Console command</option>
                 </select>
               </div>
+              {form.taskType === 'power' ? (
+                <div className="sfield">
+                  <label htmlFor="sch-action">Action</label>
+                  <select
+                    id="sch-action"
+                    value={form.action}
+                    onChange={(e) => setForm((f) => ({ ...f, action: e.target.value }))}
+                  >
+                    <option value="start">Start</option>
+                    <option value="stop">Stop</option>
+                    <option value="restart">Restart</option>
+                    <option value="kill">Kill</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="sfield">
+                  <label htmlFor="sch-command">Command</label>
+                  <input
+                    id="sch-command"
+                    value={form.command}
+                    onChange={(e) => setForm((f) => ({ ...f, command: e.target.value }))}
+                    placeholder="say Server restarting soon"
+                    required
+                  />
+                </div>
+              )}
               <div className="sfield">
                 <label htmlFor="sch-minute">Minute</label>
                 <input
@@ -185,7 +217,13 @@ export function ScheduleManager({ uuid }: Props) {
               {s.cron_minute} {s.cron_hour} {s.cron_day_of_month} * {s.cron_day_of_week}
             </div>
             <div className="sch-meta">
-              <span>{s.tasks[0]?.payload ?? '—'}</span>
+              <span>
+                {s.tasks[0]
+                  ? s.tasks[0].action === 'command'
+                    ? `Command: ${s.tasks[0].payload}`
+                    : s.tasks[0].payload
+                  : '—'}
+              </span>
               <span>{s.only_when_online ? 'Only when online' : 'Always'}</span>
               <span>
                 {s.last_run_at ? `Last run: ${new Date(s.last_run_at).toLocaleString()}` : 'Never run'}

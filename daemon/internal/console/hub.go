@@ -82,6 +82,24 @@ func (h *Hub) pumpLogs(conn *websocket.Conn, logs io.Reader) {
 	}
 }
 
+func (h *Hub) SendCommand(ctx context.Context, serverUUID uuid.UUID, containerID, command string) error {
+	h.mu.Lock()
+	w, ok := h.writers[serverUUID]
+	h.mu.Unlock()
+	if ok {
+		_, err := w.Write([]byte(command + "\n"))
+		return err
+	}
+
+	stdin, err := h.docker.Attach(ctx, containerID)
+	if err != nil {
+		return err
+	}
+	defer stdin.Close()
+	_, err = stdin.Write([]byte(command + "\n"))
+	return err
+}
+
 func (h *Hub) setWriter(serverUUID uuid.UUID, w io.WriteCloser) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

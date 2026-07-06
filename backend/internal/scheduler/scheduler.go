@@ -127,11 +127,15 @@ func execute(pool *pgxpool.Pool, resolveNodeClient NodeClientResolver, scheduleI
 		if t.Offset > 0 {
 			time.Sleep(time.Duration(t.Offset) * time.Second)
 		}
-		if t.Action != "power" {
-			continue
-		}
-		if _, err := client.Power(ctx, serverUUID, daemonclient.PowerAction(t.Payload)); err != nil {
-			log.Printf("scheduler: schedule %d: power %q failed: %v", scheduleID, t.Payload, err)
+		switch t.Action {
+		case "power":
+			if _, err := client.Power(ctx, serverUUID, daemonclient.PowerAction(t.Payload)); err != nil {
+				log.Printf("scheduler: schedule %d: power %q failed: %v", scheduleID, t.Payload, err)
+			}
+		case "command":
+			if err := client.SendCommand(ctx, serverUUID, t.Payload); err != nil {
+				log.Printf("scheduler: schedule %d: command %q failed: %v", scheduleID, t.Payload, err)
+			}
 		}
 	}
 }

@@ -235,11 +235,20 @@ re-deriving next time:
   `RowsAffected() == 0` before dispatching. This is what stops the same
   schedule firing twice if the ticker's tick and a slow query ever
   overlap — don't dispatch a task before this claim succeeds.
-Scope: only the `power` task action is implemented (`start`/`stop`/
-`restart`/`kill`); `command` (send a console line) and `backup` actions
-are accepted by the schema/UI shape but silently no-op in `execute()` —
-`command` would need the scheduler to open a console WS session itself,
-and `backup` needs backup infrastructure that doesn't exist yet (same
+**`command` tasks are real now too** — `scheduler.execute()`'s `command`
+branch calls the new `daemonclient.Client.SendCommand`, which hits a new
+daemon endpoint (`POST /servers/{uuid}/command`). The daemon side reuses
+`console.Hub`'s existing (previously write-only-to-itself) `writers` map:
+if a browser already has the console WS open, the scheduled command
+writes to that same stdin pipe; if nobody's watching, `Hub.SendCommand`
+opens its own brief `docker.Attach`, writes one line, and closes it —
+same attach/detach lifecycle `Hub.Serve` already used for real sessions,
+just without a WS wrapped around it. This is what makes a scheduled
+command reliable even when no one has the console tab open, which was
+the whole point of it being scheduled. `ScheduleManager.tsx` grew a
+"Task type" selector (Power action / Console command) so this is
+reachable from the UI, not just the API. `backup` is still a no-op —
+that needs actual backup infrastructure that doesn't exist yet (same
 `database_hosts`-style "out of scope v1" as the Databases tab).
 
 **Server deletion is wired end to end**: `ServerHandler.Delete` checks
@@ -427,13 +436,13 @@ systemd journal" into "click one button in the UI."
   the schema has `database_host_id` pointing at a `database_hosts` table
   that was deliberately never created — "out of scope v1" per the
   migration's own note).
-- **Schedules follow-ups** — `command` and `backup` task actions are
-  schema/UI-shaped but no-op in `scheduler.execute()` (see the Schedules
-  paragraph above for why). The one-task-per-schedule assumption in the
-  UI (`ScheduleManager.tsx` only ever creates a single `power` task) is a
-  frontend simplification, not a backend limit — `schedule_tasks` already
-  supports an ordered sequence with per-task offsets; a "multi-step
-  schedule" UI is additive whenever it's worth building.
+- **Schedules follow-ups** — `backup` task actions are still schema/UI-shaped
+  but no-op in `scheduler.execute()` (needs backup infrastructure that
+  doesn't exist yet). The one-task-per-schedule assumption in the UI
+  (`ScheduleManager.tsx` only ever creates a single task) is a frontend
+  simplification, not a backend limit — `schedule_tasks` already supports
+  an ordered sequence with per-task offsets; a "multi-step schedule" UI
+  is additive whenever it's worth building.
 - **Allocations got port-range bulk-add and delete** — `AllocationHandler.Create`
   now accepts an optional `port_end`; when set, it loops `port..port_end`
   inside one transaction, `INSERT ... ON CONFLICT (node_id, ip, port) DO

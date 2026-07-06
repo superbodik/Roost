@@ -195,6 +195,31 @@ func (h *Handlers) ConsoleSocket(w http.ResponseWriter, r *http.Request) {
 	h.Console.Serve(w, r, serverUUID, containerID)
 }
 
+type sendCommandRequest struct {
+	Command string `json:"command"`
+}
+
+func (h *Handlers) SendCommand(w http.ResponseWriter, r *http.Request) {
+	serverUUID, err := uuid.Parse(chi.URLParam(r, "uuid"))
+	if err != nil {
+		http.Error(w, "invalid server uuid", http.StatusBadRequest)
+		return
+	}
+	var req sendCommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	containerID := docker.ContainerNameFor(serverUUID)
+	if err := h.Console.SendCommand(r.Context(), serverUUID, containerID, req.Command); err != nil {
+		http.Error(w, "failed to send command", http.StatusBadGateway)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

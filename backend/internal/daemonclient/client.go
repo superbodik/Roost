@@ -81,6 +81,11 @@ func (c *Client) DeleteServer(ctx context.Context, serverUUID uuid.UUID) error {
 	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
 }
 
+func (c *Client) SendCommand(ctx context.Context, serverUUID uuid.UUID, command string) error {
+	path := fmt.Sprintf("/api/v1/servers/%s/command", serverUUID)
+	return c.doJSON(ctx, http.MethodPost, path, map[string]string{"command": command}, nil)
+}
+
 func (c *Client) Ping(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/healthz", nil)
 	if err != nil {

@@ -31,6 +31,7 @@ func NewRouter(dockerManager *docker.Manager, consoleHub *console.Hub, daemonTok
 		r.Route("/api/v1", func(r chi.Router) {
 			r.Post("/servers", h.CreateServer)
 			r.Post("/servers/{uuid}/power", h.Power)
+			r.Post("/servers/{uuid}/command", h.SendCommand)
 			r.Delete("/servers/{uuid}", h.Delete)
 			r.Get("/servers/{uuid}/stats", h.Stats)
 
