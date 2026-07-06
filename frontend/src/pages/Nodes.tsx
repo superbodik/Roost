@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { Allocation, CreateNodeResponse, Node, NodeStatus } from '../types';
+import type { Allocation, CreateNodeResponse, DatabaseHost, Node, NodeStatus } from '../types';
 
 const INSTALL_SCRIPT_URL = 'https://raw.githubusercontent.com/superbodik/sbPanel/main/install.sh';
 
@@ -29,6 +29,46 @@ export function Nodes() {
   const [allocForm, setAllocForm] = useState({ ip: '', port: 25565, portEnd: 25565 });
   const [allocError, setAllocError] = useState<string | null>(null);
   const [allocSubmitting, setAllocSubmitting] = useState(false);
+
+  const [dbHosts, setDbHosts] = useState<DatabaseHost[]>([]);
+  const [dbHostForm, setDbHostForm] = useState({
+    name: '',
+    host: '',
+    port: 3306,
+    admin_username: 'root',
+    admin_password: '',
+  });
+  const [dbHostError, setDbHostError] = useState<string | null>(null);
+  const [dbHostSubmitting, setDbHostSubmitting] = useState(false);
+
+  function refreshDbHosts() {
+    api.listDatabaseHosts().then(setDbHosts).catch(() => {});
+  }
+
+  async function handleCreateDbHost(e: React.FormEvent) {
+    e.preventDefault();
+    setDbHostSubmitting(true);
+    setDbHostError(null);
+    try {
+      await api.createDatabaseHost(dbHostForm);
+      setDbHostForm((f) => ({ ...f, name: '', host: '', admin_password: '' }));
+      refreshDbHosts();
+    } catch (err) {
+      setDbHostError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDbHostSubmitting(false);
+    }
+  }
+
+  async function handleDeleteDbHost(id: number) {
+    if (!window.confirm('Delete this database host? Only possible if nothing is provisioned on it.')) return;
+    try {
+      await api.deleteDatabaseHost(id);
+      refreshDbHosts();
+    } catch (err) {
+      setDbHostError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   const [statuses, setStatuses] = useState<Record<number, NodeStatus | 'checking'>>({});
   const [expandedNodeId, setExpandedNodeId] = useState<number | null>(null);
@@ -163,6 +203,7 @@ export function Nodes() {
   }
 
   useEffect(refresh, []);
+  useEffect(refreshDbHosts, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -552,6 +593,100 @@ export function Nodes() {
             </div>
           </>
         )}
+      </div>
+
+      <div className="settings-card" style={{ marginTop: 24 }}>
+        <div className="settings-card-title">Database hosts</div>
+        <p className="srv-desc" style={{ marginBottom: 14 }}>
+          Register a reachable MySQL/MariaDB server here so users can provision
+          per-server databases from the Databases tab. The admin credentials need
+          CREATE/DROP DATABASE, CREATE/DROP USER, and GRANT privileges.
+        </p>
+        <form onSubmit={handleCreateDbHost}>
+          <div className="settings-grid">
+            <div className="sfield">
+              <label htmlFor="dbhost-name">Name</label>
+              <input
+                id="dbhost-name"
+                value={dbHostForm.name}
+                onChange={(e) => setDbHostForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="main-mysql"
+                required
+              />
+            </div>
+            <div className="sfield">
+              <label htmlFor="dbhost-host">Host</label>
+              <input
+                id="dbhost-host"
+                value={dbHostForm.host}
+                onChange={(e) => setDbHostForm((f) => ({ ...f, host: e.target.value }))}
+                placeholder="127.0.0.1 or a domain"
+                required
+              />
+            </div>
+            <div className="sfield">
+              <label htmlFor="dbhost-port">Port</label>
+              <input
+                id="dbhost-port"
+                type="number"
+                value={dbHostForm.port}
+                onChange={(e) => setDbHostForm((f) => ({ ...f, port: Number(e.target.value) }))}
+                required
+              />
+            </div>
+            <div className="sfield">
+              <label htmlFor="dbhost-user">Admin username</label>
+              <input
+                id="dbhost-user"
+                value={dbHostForm.admin_username}
+                onChange={(e) => setDbHostForm((f) => ({ ...f, admin_username: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="sfield">
+              <label htmlFor="dbhost-pass">Admin password</label>
+              <input
+                id="dbhost-pass"
+                type="password"
+                value={dbHostForm.admin_password}
+                onChange={(e) => setDbHostForm((f) => ({ ...f, admin_password: e.target.value }))}
+                required
+              />
+            </div>
+          </div>
+          {dbHostError && <div className="login-error show" style={{ marginTop: 12 }}>{dbHostError}</div>}
+          <div className="settings-foot">
+            <button className="btn-sm primary" type="submit" disabled={dbHostSubmitting}>
+              {dbHostSubmitting ? 'Adding…' : 'Add database host'}
+            </button>
+          </div>
+        </form>
+
+        <div className="db-table" style={{ marginTop: 16 }}>
+          <div className="db-head">
+            <span>Name</span>
+            <span>Address</span>
+            <span>Admin user</span>
+            <span />
+          </div>
+          {dbHosts.map((host) => (
+            <div className="db-row" key={host.id}>
+              <span className="db-name">{host.name}</span>
+              <span className="db-pw">{host.host}:{host.port}</span>
+              <span>{host.admin_username}</span>
+              <span>
+                <button className="file-act-btn del" onClick={() => handleDeleteDbHost(host.id)}>
+                  Delete
+                </button>
+              </span>
+            </div>
+          ))}
+          {dbHosts.length === 0 && (
+            <p className="srv-desc" style={{ padding: 16 }}>
+              No database hosts registered yet.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

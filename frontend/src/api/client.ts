@@ -4,10 +4,12 @@ import type {
   ApiKey,
   CreateAllocationRequest,
   CreateApiKeyResponse,
+  CreateDatabaseHostRequest,
   CreateNodeRequest,
   CreateNodeResponse,
   CreateScheduleRequest,
   CreateServerRequest,
+  DatabaseHost,
   Egg,
   FileEntry,
   Node,
@@ -16,6 +18,7 @@ import type {
   PowerAction,
   Schedule,
   Server,
+  ServerDatabase,
   Subuser,
   TwoFASetup,
   TwoFAStatus,
@@ -214,6 +217,24 @@ export const api = {
 
   updateUser: (id: number, payload: UpdateUserRequest) =>
     request<void>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
+  listDatabaseHosts: () => request<DatabaseHost[]>('/database-hosts'),
+
+  createDatabaseHost: (payload: CreateDatabaseHostRequest) =>
+    request<{ id: number }>('/database-hosts', { method: 'POST', body: JSON.stringify(payload) }),
+
+  deleteDatabaseHost: (id: number) => request<void>(`/database-hosts/${id}`, { method: 'DELETE' }),
+
+  listServerDatabases: (uuid: string) => request<ServerDatabase[]>(`/servers/${uuid}/databases`),
+
+  createServerDatabase: (uuid: string, databaseHostId: number, name: string) =>
+    request<ServerDatabase>(`/servers/${uuid}/databases`, {
+      method: 'POST',
+      body: JSON.stringify({ database_host_id: databaseHostId, name }),
+    }),
+
+  deleteServerDatabase: (uuid: string, id: number) =>
+    request<void>(`/servers/${uuid}/databases/${id}`, { method: 'DELETE' }),
 
   getVersion: () => request<VersionInfo>('/version'),
 

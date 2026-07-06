@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, connectConsoleSocket, connectServerSocket } from '../api/client';
+import { DatabaseManager } from '../components/DatabaseManager';
 import { FileManager } from '../components/FileManager';
 import { ScheduleManager } from '../components/ScheduleManager';
 import { SubuserManager } from '../components/SubuserManager';
@@ -265,10 +266,7 @@ export function ServerView({ uuid, onBack }: Props) {
           </div>
 
           <div className={`tab-panel ${tab === 'databases' ? 'active' : ''}`}>
-            <p className="srv-desc">
-              Server databases aren't implemented yet — the schema exists
-              (server_databases), no handler yet. See add.md.
-            </p>
+            {tab === 'databases' && <DatabaseManager uuid={uuid} />}
           </div>
 
           <div className={`tab-panel ${tab === 'schedules' ? 'active' : ''}`}>

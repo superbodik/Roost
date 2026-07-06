@@ -225,6 +225,8 @@ export const SUBUSER_PERMISSIONS: { code: string; label: string }[] = [
   { code: 'files.write', label: 'Manage files' },
   { code: 'schedules.read', label: 'View schedules' },
   { code: 'schedules.write', label: 'Manage schedules' },
+  { code: 'databases.read', label: 'View databases' },
+  { code: 'databases.write', label: 'Manage databases' },
 ];
 
 export const API_KEY_PERMISSIONS: { code: string; label: string }[] = [
@@ -232,6 +234,31 @@ export const API_KEY_PERMISSIONS: { code: string; label: string }[] = [
   { code: 'servers.write', label: 'Create/delete servers' },
   ...SUBUSER_PERMISSIONS,
 ];
+
+export interface DatabaseHost {
+  id: number;
+  name: string;
+  host: string;
+  port: number;
+  admin_username: string;
+}
+
+export interface CreateDatabaseHostRequest {
+  name: string;
+  host: string;
+  port?: number;
+  admin_username: string;
+  admin_password: string;
+}
+
+export interface ServerDatabase {
+  id: number;
+  database_name: string;
+  username: string;
+  password: string;
+  host: string;
+  port: number;
+}
 
 export interface CreateScheduleRequest {
   name: string;

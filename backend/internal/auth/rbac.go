@@ -18,6 +18,8 @@ const (
 	PermFilesWrite     = "files.write"
 	PermSchedulesRead  = "schedules.read"
 	PermSchedulesWrite = "schedules.write"
+	PermDatabasesRead  = "databases.read"
+	PermDatabasesWrite = "databases.write"
 
 	PermServersRead  = "servers.read"
 	PermServersWrite = "servers.write"

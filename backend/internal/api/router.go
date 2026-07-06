@@ -69,6 +69,8 @@ func NewRouter(deps Dependencies) http.Handler {
 	twofaHandler := &handlers.TwoFAHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey, Limiter: deps.Limiter}
 	subuserHandler := &handlers.SubuserHandler{DB: deps.DB}
 	userHandler := &handlers.UserHandler{DB: deps.DB}
+	databaseHostHandler := &handlers.DatabaseHostHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey}
+	serverDatabaseHandler := &handlers.ServerDatabaseHandler{DB: deps.DB, Subusers: subusers, Encrypt: deps.EncryptionKey}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
@@ -88,6 +90,10 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.With(auth.RequireAdmin).Get("/users", userHandler.List)
 			r.With(auth.RequireAdmin).Patch("/users/{id}", userHandler.Update)
 
+			r.Get("/database-hosts", databaseHostHandler.List)
+			r.With(auth.RequireAdmin).Post("/database-hosts", databaseHostHandler.Create)
+			r.With(auth.RequireAdmin).Delete("/database-hosts/{id}", databaseHostHandler.Delete)
+
 			r.Get("/servers", serverHandler.List)
 			r.Post("/servers", serverHandler.Create)
 			r.Get("/servers/{uuid}", serverHandler.Get)
@@ -105,6 +111,10 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Post("/servers/{uuid}/schedules", scheduleHandler.Create)
 			r.Post("/servers/{uuid}/schedules/{id}/toggle", scheduleHandler.Toggle)
 			r.Delete("/servers/{uuid}/schedules/{id}", scheduleHandler.Delete)
+
+			r.Get("/servers/{uuid}/databases", serverDatabaseHandler.List)
+			r.Post("/servers/{uuid}/databases", serverDatabaseHandler.Create)
+			r.Delete("/servers/{uuid}/databases/{id}", serverDatabaseHandler.Delete)
 
 			r.Get("/servers/{uuid}/subusers", subuserHandler.List)
 			r.Post("/servers/{uuid}/subusers", subuserHandler.Create)

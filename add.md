@@ -481,7 +481,21 @@ unused.**
   it again. Check `go.mod`'s `go` line after *any* `go get`/`go mod tidy`
   against what `scripts/toolchain.sh`'s `GO_VERSION` actually installs —
   a passing local build doesn't catch this since the local toolchain is
-  usually newer than what's pinned for fresh installs.
+  usually newer than what's pinned for fresh installs. **This happened
+  again, one layer deeper, adding `go-sql-driver/mysql` for the
+  Databases feature**: the driver itself (`v1.8.1`) only declares `go
+  1.18` and looked safe, but `go mod tidy` still bumped the directive to
+  `1.24` — because it pulled in `filippo.io/edwards25519` at whatever
+  latest version satisfied MVS, and *that* transitive dependency is what
+  actually required `1.24`, not the driver I'd deliberately pinned.
+  Pinning your *direct* dependency to an old-enough version isn't
+  sufficient by itself — a transitive dependency can independently force
+  the same bump. The reliable check is: after any dependency change,
+  manually set the `go` directive back to what `toolchain.sh` installs
+  and run a plain `go build ./...` (not `go mod tidy`, which will
+  re-resolve and re-bump); if it still builds clean, every version in
+  the resolved graph is actually compatible, regardless of what any
+  individual package's own `go.mod` claims to require.
 
 **Once the frontend could actually display backend error text (previous
 entry), the next problem was that some backend messages were still
@@ -746,12 +760,55 @@ actually flow into the create form.
   saves, or an uploaded file bigger than available RAM). No drag-and-drop,
   just a plain file-picker button. No progress indicator on upload/download
   either — fine at config-file sizes, would matter once streaming is added.
-- **Databases tab** — the last "not implemented yet" panel. `server_databases`
-  table exists, no handler. Needs a decision on how DB credentials
-  actually get provisioned (a MySQL/Postgres instance per node? shared?
-  the schema has `database_host_id` pointing at a `database_hosts` table
-  that was deliberately never created — "out of scope v1" per the
-  migration's own note).
+- **Databases tab is real now** — no longer the last placeholder. Went
+  with the same architecture Pterodactyl itself uses: an admin registers
+  one or more **database hosts** (a reachable MySQL/MariaDB server the
+  panel can connect to as an admin user — new `database_hosts` table,
+  migration `0006`, admin credentials AES-GCM encrypted like daemon
+  tokens), then any user with `databases.write` on a server can
+  provision a database on one of those hosts from the Databases tab.
+  New `internal/mysqlhost` package wraps `database/sql` +
+  `go-sql-driver/mysql`: `Provision` runs `CREATE DATABASE` / `CREATE
+  USER` / `GRANT ALL` / `FLUSH PRIVILEGES`, `Deprovision` runs the
+  `DROP` equivalents, `Ping` just opens+closes a connection (used to
+  validate a new host's credentials at registration time, so a typo'd
+  password is caught immediately instead of surfacing later as a
+  mysterious create-database failure).
+  - **Identifier safety**: MySQL doesn't support parameterized
+    identifiers (`?` placeholders only work for values, never for
+    database/user/table names), so database and user names are
+    generated server-side from the server's numeric ID plus a
+    strictly-sanitized suffix (`[^a-zA-Z0-9_]` stripped, truncated to
+    fit MySQL's 32-char username limit), and `mysqlhost.ValidIdentifier`
+    re-validates against `^[a-zA-Z0-9_]+$` immediately before any
+    identifier is concatenated into a DDL string — never trust that the
+    generation step alone was enough, check again right at the point of
+    use.
+  - **Password safety**: the per-database password is always generated
+    by the panel itself (same `generateToken`/hex-encoded-random-bytes
+    helper `NodeHandler.Create` already used for daemon tokens), never
+    user input, so it can only ever contain `[0-9a-f]` — safe to embed
+    directly in the `CREATE USER ... IDENTIFIED BY '...'` string
+    alongside the validated identifiers, since it can never contain a
+    quote or backslash. This is *why* it's safe to build these
+    statements with string concatenation instead of parameter binding,
+    even though string-built SQL is normally the thing to avoid — the
+    safety comes from fully controlling both value spaces (identifiers
+    validated against a strict pattern, password from a strict
+    character set), not from the concatenation itself being fine.
+  - Passwords are stored encrypted (same AES-GCM/`internal/crypto`
+    pattern as everywhere else) but — unlike an API key — **decrypted
+    and returned on every `List` call**, not shown once. A database
+    password isn't a bearer credential for *this panel*, it's a
+    credential the owner needs indefinitely to configure their actual
+    application (bot config, `.env` file, etc.), so "shown once" would
+    make the feature useless. Frontend hides it behind a "Show"/"Copy"
+    toggle by default so it's not just sitting in plain text on screen.
+  - Admin-only: registering/deleting database hosts. Owner-or-subuser-
+    with-`databases.read`/`write`: everything scoped to one server.
+    `DatabaseHostHandler.Delete` refuses if any `server_databases` row
+    still references that host (same "still has children" guard as
+    node deletion).
 - **Schedules follow-ups** — `backup` task actions are still schema/UI-shaped
   but no-op in `scheduler.execute()` (needs backup infrastructure that
   doesn't exist yet). The one-task-per-schedule assumption in the UI
