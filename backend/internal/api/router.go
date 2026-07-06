@@ -34,6 +34,17 @@ type Dependencies struct {
 	RepoSlug      string
 }
 
+const maxRequestBodyBytes = 100 << 20
+
+func maxBodySize(limit int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func NewRouter(deps Dependencies) http.Handler {
 	r := chi.NewRouter()
 
@@ -42,6 +53,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(maxBodySize(maxRequestBodyBytes))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE"},

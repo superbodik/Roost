@@ -54,6 +54,7 @@ func (h *Hub) ServeServerSocket(w http.ResponseWriter, r *http.Request, serverUU
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(4096)
 
 	h.subscribe(serverUUID, conn)
 	defer h.unsubscribe(serverUUID, conn)
@@ -72,6 +73,7 @@ func (h *Hub) ServeConsoleSocket(w http.ResponseWriter, r *http.Request, serverU
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(32 * 1024)
 
 	if err := h.subscribeConsole(serverUUID, conn); err != nil {
 		log.Printf("console dial failed: %v", err)

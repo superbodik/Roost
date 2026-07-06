@@ -497,6 +497,43 @@ unused.**
   the resolved graph is actually compatible, regardless of what any
   individual package's own `go.mod` claims to require.
 
+**A follow-up security pass on request/connection size limits found two
+more real, if lower-severity, resource-exhaustion gaps.**
+- `FileHandler.Write` called `io.ReadAll(r.Body)` with **no size limit
+  at all** — any user holding `files.write` (which a subuser can be
+  granted, not just the owner) could send an arbitrarily large upload
+  and exhaust the *panel* process's memory. The daemon side was already
+  safe (`files.Write` streams straight to disk via `io.Copy`, never
+  buffers the whole thing), so this was panel-only. Rather than patch
+  just this one handler, added a single global `maxBodySize` middleware
+  (100 MiB via `http.MaxBytesReader`, applied via `r.Use()` before
+  routing) covering every request on both the panel and `wingsd` — every
+  JSON-body handler in the codebase had the same latent gap (unbounded
+  `json.NewDecoder(r.Body).Decode`), not just this one, so a global fix
+  was the right shape rather than a one-off per-handler patch. 100 MiB
+  is generous for real config files while still bounding worst-case
+  memory use; genuinely large files (logs, world saves) still need real
+  streaming, which is the same known Files-tab gap already tracked in
+  the roadmap below — this doesn't fix that, it just stops the unbounded
+  case from being trivially exploitable in the meantime.
+- Neither WS hub (`ws.Hub` on the panel, `console.Hub` on `wingsd`)
+  called `conn.SetReadLimit(...)` after upgrading — gorilla/websocket
+  defaults to no message-size cap at all, so an authenticated connection
+  (anyone with `console` permission, not just admins) could send one
+  oversized WS frame and force a large allocation. Added `SetReadLimit`
+  to both: 4096 bytes on the stats socket (client-to-server messages are
+  never actually read for anything, just drained to detect disconnect),
+  32 KiB on both console sockets (generous for a single command line,
+  small enough to matter as a cap).
+- **Verified no sensitive column ever reaches a JSON response**: grepped
+  every handler for `daemon_token_encrypted`/`totp_secret`/`password_hash`/
+  `admin_password_encrypted` — every occurrence is either a write, or a
+  read immediately followed by decrypt-and-use (never assigned into a
+  struct that gets `writeJSON`'d back to the client). Worth re-running
+  this same grep after adding any new encrypted-secret column, since
+  it's a one-line check that catches an entire class of accidental-leak
+  bug before it ships.
+
 **Once the frontend could actually display backend error text (previous
 entry), the next problem was that some backend messages were still
 deliberately vague.** `ServerHandler.Create`/`Power`'s "node unavailable"

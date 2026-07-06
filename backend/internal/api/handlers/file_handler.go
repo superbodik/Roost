@@ -92,7 +92,7 @@ func (h *FileHandler) Write(w http.ResponseWriter, r *http.Request) {
 
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		http.Error(w, "file too large or failed to read request body", http.StatusBadRequest)
 		return
 	}
 

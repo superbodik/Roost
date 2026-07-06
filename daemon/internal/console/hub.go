@@ -38,6 +38,7 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, serverUUID uuid.UUID
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(32 * 1024)
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
