@@ -1210,3 +1210,13 @@ actually flow into the create form.
      socket. The UI now shows "Connecting…" and disables the input
      until the daemon side is actually live, instead of pretending to
      be ready the instant the tab opens.
+- **v0.1.1**: patch release on top of v0.1.0, bug fixes only, no new
+  features. Everything that shipped between the two tags: the
+  `ContainerID` nullable-pointer crash fixed ("failed to read servers
+  (500)"), clearer database-host connect errors (refused-connection
+  vs. bad credentials), the daemon `Stats` handler ordering fix so
+  online/offline no longer freezes on the last known state once a
+  server actually stops, WebSocket reconnect-with-backoff for both the
+  live-stats and console sockets, and the console tab no longer failing
+  completely silently (attach/log-follow/dial errors now surface as a
+  visible `[console] ...` line instead of vanishing into a server log).
