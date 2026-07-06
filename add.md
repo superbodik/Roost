@@ -1220,3 +1220,20 @@ actually flow into the create form.
   live-stats and console sockets, and the console tab no longer failing
   completely silently (attach/log-follow/dial errors now surface as a
   visible `[console] ...` line instead of vanishing into a server log).
+- Added `website/` — a standalone marketing/landing site for Roost, built to
+  be dogfooded on the panel itself: `app.py` is a zero-dependency stdlib
+  `http.server` static file server (reads `PORT` from the environment), so it
+  runs as-is on the existing "Python: Website" egg with an empty
+  `requirements.txt`. `public/` holds the actual page — same dark palette and
+  `--pink`/blob-gradient language as `panel.css`, plus scroll-reveal,
+  animated stat counters, a typing-effect terminal block, an infinite
+  marquee, and a feature-comparison table, all gated behind
+  `prefers-reduced-motion` like the panel's own animation work. Verified
+  with a real headless-browser run (Playwright, desktop + mobile viewports,
+  zero console errors) rather than just reading the code.
+- Rewrote the root `README.md` top to bottom: it had drifted badly out of
+  date (still describing files/console/schedules/databases/subusers as
+  "not implemented yet" when all of them ship), so this is a straight
+  rewrite reflecting current reality plus badges, a feature table, and the
+  same competitive-comparison framing as the new landing page, instead of
+  a rebrand copy grafted onto stale content.

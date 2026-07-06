@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Roost — the game server panel that doesn't get in your way</title>
+<meta name="description" content="Roost: self-hosted, multi-node game server control panel. Full RBAC, 2FA everywhere, live reconnecting console, modular Eggs, database provisioning. Open source, yours forever." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="bg-blobs" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+</div>
+
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark">🐦</span>
+      <span class="brand-text">Roost</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#compare">Compare</a>
+      <a href="#eggs">Deploy anything</a>
+      <a href="#deploy">Install</a>
+    </div>
+    <a class="btn-ghost" href="https://github.com/superbodik/sbPanel" target="_blank" rel="noopener">
+      <span>GitHub</span>
+      <span class="star">★</span>
+    </a>
+  </div>
+</nav>
+
+<main>
+
+  <section class="hero" id="top">
+    <div class="hero-tag reveal">v0.1.1 · open source · self-hosted</div>
+    <h1 class="hero-title reveal">
+      <span class="grad">Your servers.</span><br />
+      <span class="grad grad-2">Your panel.</span><br />
+      <span class="grad grad-3">Zero compromise.</span>
+    </h1>
+    <p class="hero-sub reveal">
+      Roost is a self-hosted, multi-node control panel for game servers, bots and generic
+      apps — built from scratch to fix everything the old-guard panels shrug off:
+      real RBAC, 2FA on every login, a console that actually reconnects, and a deploy
+      story that fits in one line of bash.
+    </p>
+    <div class="hero-cta reveal">
+      <a class="btn-primary" href="#deploy">Deploy Roost now</a>
+      <a class="btn-secondary" href="https://github.com/superbodik/sbPanel" target="_blank" rel="noopener">Read the source</a>
+    </div>
+
+    <div class="hero-term reveal">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="term-title">root@node-01</span>
+      </div>
+      <div class="term-body">
+        <span class="term-prompt">$</span>
+        <span class="term-type" id="termType"></span><span class="term-cursor">▌</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="marquee">
+    <div class="marquee-track">
+      <span>SELF-HOSTED&nbsp;</span><span>·</span><span>&nbsp;OPEN SOURCE&nbsp;</span><span>·</span>
+      <span>&nbsp;MULTI-NODE&nbsp;</span><span>·</span><span>&nbsp;2FA EVERYWHERE&nbsp;</span><span>·</span>
+      <span>&nbsp;LIVE RECONNECTING CONSOLE&nbsp;</span><span>·</span><span>&nbsp;REAL RBAC&nbsp;</span><span>·</span>
+      <span>&nbsp;SCOPED API KEYS&nbsp;</span><span>·</span><span>&nbsp;YOURS FOREVER&nbsp;</span><span>·</span>
+      <span>SELF-HOSTED&nbsp;</span><span>·</span><span>&nbsp;OPEN SOURCE&nbsp;</span><span>·</span>
+      <span>&nbsp;MULTI-NODE&nbsp;</span><span>·</span><span>&nbsp;2FA EVERYWHERE&nbsp;</span><span>·</span>
+      <span>&nbsp;LIVE RECONNECTING CONSOLE&nbsp;</span><span>·</span><span>&nbsp;REAL RBAC&nbsp;</span><span>·</span>
+      <span>&nbsp;SCOPED API KEYS&nbsp;</span><span>·</span><span>&nbsp;YOURS FOREVER&nbsp;</span><span>·</span>
+    </div>
+  </div>
+
+  <section class="stats">
+    <div class="stat reveal">
+      <div class="stat-num" data-count="100">0</div>
+      <div class="stat-lbl">% source you own<br />no vendor lock-in</div>
+    </div>
+    <div class="stat reveal">
+      <div class="stat-num" data-count="0">0</div>
+      <div class="stat-lbl">accounts without<br />2FA support</div>
+    </div>
+    <div class="stat reveal">
+      <div class="stat-num" data-count="1" data-suffix="-line">0</div>
+      <div class="stat-lbl">bash command<br />to deploy everything</div>
+    </div>
+    <div class="stat reveal">
+      <div class="stat-num" data-count="2" data-suffix="s">0</div>
+      <div class="stat-lbl">live stats refresh<br />with auto-reconnect</div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <h2 class="section-title reveal">Built like it's ours to keep</h2>
+    <p class="section-sub reveal">Because it is. No SaaS tier, no "contact sales", no telemetry phoning home.</p>
+
+    <div class="grid">
+      <article class="card reveal">
+        <div class="card-icon">🔐</div>
+        <h3>Real RBAC, not a checkbox</h3>
+        <p>Roles, permissions, per-server subusers with scoped access, and API keys that only
+        carry the permissions you actually grant them — not the whole account.</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon">🛡️</div>
+        <h3>2FA on every login</h3>
+        <p>TOTP with a real QR code, a dedicated verification screen instead of a bolted-on
+        field, and rate-limited login attempts so brute force gets nowhere.</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon">🖥️</div>
+        <h3>A console that reconnects</h3>
+        <p>Live output and power state auto-recover from dropped sockets, sleeping laptops
+        and daemon restarts — with backoff, not a dead tab waiting for F5.</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon">🌐</div>
+        <h3>Multi-node from day one</h3>
+        <p>One master panel, any number of daemon nodes talking over a token-authenticated
+        protocol. Add capacity by pointing install.sh at a new box.</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon">🥚</div>
+        <h3>Modular Eggs</h3>
+        <p>Minecraft, Discord/Telegram bots, generic Python apps, or your own Docker image —
+        the deploy flow doesn't care what's inside the container.</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon">🗄️</div>
+        <h3>Database provisioning built in</h3>
+        <p>Register a MySQL/MariaDB host once, then hand servers their own database and
+        credentials on demand — no manual GRANT statements.</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon">⏱️</div>
+        <h3>Real cron schedules</h3>
+        <p>Power actions and command chains on a schedule, claimed atomically so two ticks
+        never double-fire the same job.</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon">📦</div>
+        <h3>Actual semantic versioning</h3>
+        <p>Every release is a deliberate, tagged milestone — not "update available" on
+        literally every commit like it used to be everywhere else.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="compare" id="compare">
+    <h2 class="section-title reveal">How Roost stacks up</h2>
+    <p class="section-sub reveal">Same job as the legacy panels. None of the baggage.</p>
+
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="col-roost">Roost</th>
+            <th>Old-guard panels</th>
+            <th>Managed / SaaS hosts</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Source code you actually own</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="no">✕</td>
+          </tr>
+          <tr>
+            <td>2FA on the login screen, not an addon</td>
+            <td class="yes">✓</td>
+            <td class="maybe">plugin</td>
+            <td class="maybe">varies</td>
+          </tr>
+          <tr>
+            <td>Console survives a dropped connection</td>
+            <td class="yes">✓</td>
+            <td class="no">manual refresh</td>
+            <td class="maybe">varies</td>
+          </tr>
+          <tr>
+            <td>Per-server subusers with scoped permissions</td>
+            <td class="yes">✓</td>
+            <td class="maybe">basic</td>
+            <td class="no">✕</td>
+          </tr>
+          <tr>
+            <td>Database provisioning without leaving the panel</td>
+            <td class="yes">✓</td>
+            <td class="maybe">plugin</td>
+            <td class="maybe">varies</td>
+          </tr>
+          <tr>
+            <td>One-line install for panel + node</td>
+            <td class="yes">✓</td>
+            <td class="no">multi-step docs</td>
+            <td class="no">n/a</td>
+          </tr>
+          <tr>
+            <td>Deliberate, tagged releases</td>
+            <td class="yes">✓</td>
+            <td class="maybe">varies</td>
+            <td class="no">n/a</td>
+          </tr>
+          <tr>
+            <td>Monthly bill for someone else's server</td>
+            <td class="no">✕</td>
+            <td class="no">✕</td>
+            <td class="yes">every month</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="eggs" id="eggs">
+    <h2 class="section-title reveal">Deploy whatever you're building</h2>
+    <p class="section-sub reveal">The egg system doesn't care if it's a game, a bot, or your own idea.</p>
+    <div class="egg-grid">
+      <div class="egg-card reveal"><span class="egg-emoji">⛏️</span><span>Minecraft</span></div>
+      <div class="egg-card reveal"><span class="egg-emoji">🐍</span><span>Python apps</span></div>
+      <div class="egg-card reveal"><span class="egg-emoji">🤖</span><span>Discord bots</span></div>
+      <div class="egg-card reveal"><span class="egg-emoji">✈️</span><span>Telegram bots</span></div>
+      <div class="egg-card reveal"><span class="egg-emoji">🐳</span><span>Any Docker image</span></div>
+      <div class="egg-card reveal"><span class="egg-emoji">🛠️</span><span>Whatever's next</span></div>
+    </div>
+    <p class="egg-note reveal">This page is literally hosted on Roost, via the stock "Python: Website" egg. No special-casing.</p>
+  </section>
+
+  <section class="deploy" id="deploy">
+    <h2 class="section-title reveal">One command. That's the whole install.</h2>
+    <p class="section-sub reveal">Ubuntu 22.04/24.04, root, and about two minutes.</p>
+
+    <div class="code-block reveal">
+      <div class="code-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="code-label">install.sh</span>
+        <button class="copy-btn" id="copyInstall">Copy</button>
+      </div>
+      <pre id="installCmd">bash &lt;(curl -sSL https://raw.githubusercontent.com/superbodik/sbPanel/main/install.sh)</pre>
+    </div>
+
+    <p class="section-sub reveal" style="margin-top:28px;">Already running Roost? Same command, one flag:</p>
+    <div class="code-block reveal">
+      <div class="code-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="code-label">update</span>
+        <button class="copy-btn" id="copyUpdate">Copy</button>
+      </div>
+      <pre id="updateCmd">PANEL_UPDATE=1 bash &lt;(curl -sSL https://raw.githubusercontent.com/superbodik/sbPanel/main/install.sh)</pre>
+    </div>
+  </section>
+
+  <section class="cta">
+    <h2 class="cta-title reveal">Stop renting your infrastructure.</h2>
+    <a class="btn-primary btn-big reveal" href="https://github.com/superbodik/sbPanel" target="_blank" rel="noopener">Get Roost on GitHub →</a>
+  </section>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="brand footer-brand">
+      <span class="brand-mark">🐦</span><span class="brand-text">Roost</span>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/superbodik/sbPanel" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/superbodik/sbPanel/tree/main/docs" target="_blank" rel="noopener">Docs</a>
+      <a href="https://github.com/superbodik/sbPanel/releases/tag/v0.1.1" target="_blank" rel="noopener">v0.1.1</a>
+    </div>
+    <div class="footer-note">Self-hosted. Open source. Built different.</div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
