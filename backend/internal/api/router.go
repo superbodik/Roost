@@ -85,10 +85,13 @@ func NewRouter(deps Dependencies) http.Handler {
 	databaseHostHandler := &handlers.DatabaseHostHandler{DB: deps.DB, EncryptionKey: deps.EncryptionKey}
 	serverDatabaseHandler := &handlers.ServerDatabaseHandler{DB: deps.DB, Subusers: subusers, Encrypt: deps.EncryptionKey}
 	serverDomainHandler := &handlers.ServerDomainHandler{DB: deps.DB, Subusers: subusers, NodeClient: deps.NodeClient}
+	sshKeyHandler := &handlers.SSHKeyHandler{DB: deps.DB}
+	sftpAuthHandler := &handlers.SFTPAuthHandler{DB: deps.DB, Subusers: subusers, EncryptionKey: deps.EncryptionKey}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
 		r.Post("/auth/refresh", authHandler.Refresh)
+		r.Post("/internal/sftp/authenticate", sftpAuthHandler.Authenticate)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Timeout(30 * time.Second))
@@ -153,6 +156,10 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Get("/account/api-keys", apiKeyHandler.List)
 			r.Post("/account/api-keys", apiKeyHandler.Create)
 			r.Delete("/account/api-keys/{id}", apiKeyHandler.Delete)
+
+			r.Get("/account/ssh-keys", sshKeyHandler.List)
+			r.Post("/account/ssh-keys", sshKeyHandler.Create)
+			r.Delete("/account/ssh-keys/{id}", sshKeyHandler.Delete)
 
 			r.Get("/account/2fa/status", twofaHandler.Status)
 			r.Post("/account/2fa/setup", twofaHandler.Setup)

@@ -5,7 +5,7 @@ import type { Allocation, CreateNodeResponse, DatabaseHost, Node, NodeStatus } f
 const INSTALL_SCRIPT_URL = 'https://raw.githubusercontent.com/superbodik/Roost/main/install.sh';
 
 function nodeInstallCommand(daemonToken: string): string {
-  return `WINGSD_DAEMON_TOKEN=${daemonToken} bash <(curl -sSL ${INSTALL_SCRIPT_URL})`;
+  return `WINGSD_DAEMON_TOKEN=${daemonToken} WINGSD_PANEL_URL=${window.location.origin} bash <(curl -sSL ${INSTALL_SCRIPT_URL})`;
 }
 
 export function Nodes() {

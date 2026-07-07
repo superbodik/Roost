@@ -10,6 +10,9 @@ type Config struct {
 	TLSKeyFile   string
 	DockerSocket string
 	DataDir      string
+	PanelURL     string
+	SFTPAddr     string
+	SFTPHostKey  string
 }
 
 func Load() Config {
@@ -21,6 +24,9 @@ func Load() Config {
 		TLSKeyFile:   os.Getenv("WINGSD_TLS_KEY"),
 		DockerSocket: getEnv("WINGSD_DOCKER_SOCKET", ""),
 		DataDir:      getEnv("WINGSD_DATA_DIR", "/var/lib/wingsd/servers"),
+		PanelURL:     os.Getenv("WINGSD_PANEL_URL"),
+		SFTPAddr:     getEnv("WINGSD_SFTP_ADDR", ":2022"),
+		SFTPHostKey:  getEnv("WINGSD_SFTP_HOST_KEY", "/etc/wingsd/sftp_host_key"),
 	}
 }
 

@@ -173,6 +173,13 @@ export interface CreateApiKeyResponse {
   token: string;
 }
 
+export interface SSHKey {
+  id: number;
+  name: string;
+  fingerprint: string;
+  created_at: string;
+}
+
 export interface TwoFAStatus {
   enabled: boolean;
 }

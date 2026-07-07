@@ -54,6 +54,14 @@ write_daemon_env() {
 		else
 			log_warn "$DAEMON_ENV_FILE already exists — leaving it untouched (no WINGSD_DAEMON_TOKEN provided to update it)"
 		fi
+		if [[ -n "${WINGSD_PANEL_URL:-}" ]]; then
+			if grep -q '^WINGSD_PANEL_URL=' "$DAEMON_ENV_FILE"; then
+				sed -i "s|^WINGSD_PANEL_URL=.*|WINGSD_PANEL_URL=${WINGSD_PANEL_URL}|" "$DAEMON_ENV_FILE"
+			else
+				echo "WINGSD_PANEL_URL=${WINGSD_PANEL_URL}" >> "$DAEMON_ENV_FILE"
+			fi
+			log_ok "Updated panel URL in $DAEMON_ENV_FILE"
+		fi
 		return
 	fi
 
@@ -72,9 +80,18 @@ write_daemon_env() {
 		fi
 	fi
 
+	local panel_url="${WINGSD_PANEL_URL:-}"
+	if [[ -z "$panel_url" ]]; then
+		read -rp "$(msg panel_url_ask)" panel_url
+	fi
+	if [[ -z "$panel_url" ]]; then
+		log_warn "No panel URL given — SFTP logins will be rejected until WINGSD_PANEL_URL is set in $DAEMON_ENV_FILE"
+	fi
+
 	cat >"$DAEMON_ENV_FILE" <<-EOF
 	WINGSD_NODE_UUID=${node_uuid}
 	WINGSD_DAEMON_TOKEN=${daemon_token}
+	WINGSD_PANEL_URL=${panel_url}
 	WINGSD_HTTP_ADDR=0.0.0.0:8443
 	WINGSD_DATA_DIR=${DAEMON_DATA_DIR}
 	EOF

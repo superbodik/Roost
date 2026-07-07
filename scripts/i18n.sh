@@ -94,6 +94,9 @@ MSG_RU[daemon_token_intro]="Теперь зайдите в панель чере
 MSG_EN[daemon_token_ask]="Daemon token from the panel: "
 MSG_RU[daemon_token_ask]="Токен демона из панели: "
 
+MSG_EN[panel_url_ask]="Panel URL (e.g. https://panel.example.com — leave blank to configure SFTP later): "
+MSG_RU[panel_url_ask]="Адрес панели (например https://panel.example.com — можно оставить пустым и настроить SFTP позже): "
+
 MSG_EN[full_uninstall_warn]="This PERMANENTLY deletes the panel database, all servers' data directories, Docker and everything running in it, and every generated secret. There is no undo."
 MSG_RU[full_uninstall_warn]="Это НАВСЕГДА удалит базу данных панели, все каталоги данных серверов, Docker и всё, что в нём запущено, а также все сгенерированные секреты. Отменить это будет нельзя."
 

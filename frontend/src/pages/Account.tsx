@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { api } from '../api/client';
-import type { ApiKey, CreateApiKeyResponse, TwoFASetup, TwoFAStatus } from '../types';
+import type { ApiKey, CreateApiKeyResponse, SSHKey, TwoFASetup, TwoFAStatus } from '../types';
 import { API_KEY_PERMISSIONS } from '../types';
+
+function loadUsername(): string {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return 'yourusername';
+    return (JSON.parse(raw) as { username: string }).username;
+  } catch {
+    return 'yourusername';
+  }
+}
 
 export function Account() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -11,6 +21,12 @@ export function Account() {
   const [justCreated, setJustCreated] = useState<CreateApiKeyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [sshKeys, setSSHKeys] = useState<SSHKey[]>([]);
+  const [sshKeyName, setSSHKeyName] = useState('');
+  const [sshPublicKey, setSSHPublicKey] = useState('');
+  const [sshError, setSSHError] = useState<string | null>(null);
+  const [sshSubmitting, setSSHSubmitting] = useState(false);
 
   const [twofaStatus, setTwofaStatus] = useState<TwoFAStatus | null>(null);
   const [twofaSetup, setTwofaSetup] = useState<TwoFASetup | null>(null);
@@ -24,11 +40,16 @@ export function Account() {
     api.listApiKeys().then(setKeys).catch(() => {});
   }
 
+  function refreshSSHKeys() {
+    api.listSSHKeys().then(setSSHKeys).catch(() => {});
+  }
+
   function refreshTwofa() {
     api.get2FAStatus().then(setTwofaStatus).catch(() => {});
   }
 
   useEffect(refresh, []);
+  useEffect(refreshSSHKeys, []);
   useEffect(refreshTwofa, []);
 
   async function handleCreate(e: React.FormEvent) {
@@ -60,6 +81,31 @@ export function Account() {
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleCreateSSHKey(e: React.FormEvent) {
+    e.preventDefault();
+    setSSHSubmitting(true);
+    setSSHError(null);
+    try {
+      await api.createSSHKey(sshKeyName, sshPublicKey);
+      setSSHKeyName('');
+      setSSHPublicKey('');
+      refreshSSHKeys();
+    } catch (err) {
+      setSSHError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSSHSubmitting(false);
+    }
+  }
+
+  async function handleDeleteSSHKey(id: number) {
+    try {
+      await api.deleteSSHKey(id);
+      refreshSSHKeys();
+    } catch (err) {
+      setSSHError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -199,6 +245,76 @@ export function Account() {
                 style={{ width: 'auto', padding: '10px 20px' }}
               >
                 {submitting ? 'Creating…' : 'Create key'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="acc-card">
+          <div className="acc-card-title">SSH Keys (SFTP access)</div>
+          <p className="srv-desc" style={{ marginBottom: 12 }}>
+            Add a public key here, then connect with any SFTP client using{' '}
+            <code>{loadUsername()}.&lt;server-id&gt;</code> as the username and port{' '}
+            <code>2022</code> on the server's node — the server ID is shown on its Overview tab.
+          </p>
+
+          <div className="api-list">
+            {sshKeys.map((k) => (
+              <div className="api-item" key={k.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span className="api-memo">{k.name}</span>
+                  <button className="file-act-btn del" onClick={() => handleDeleteSSHKey(k.id)}>
+                    Delete
+                  </button>
+                </div>
+                <span className="srv-desc" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                  {k.fingerprint}
+                </span>
+              </div>
+            ))}
+            {sshKeys.length === 0 && <p className="srv-desc">No SSH keys yet.</p>}
+          </div>
+
+          <form onSubmit={handleCreateSSHKey} style={{ marginTop: 16 }}>
+            <div className="sfield" style={{ marginBottom: 14 }}>
+              <label htmlFor="ssh-key-name">Key name</label>
+              <input
+                id="ssh-key-name"
+                value={sshKeyName}
+                onChange={(e) => setSSHKeyName(e.target.value)}
+                placeholder="e.g. laptop"
+                required
+              />
+            </div>
+            <div className="sfield" style={{ marginBottom: 14 }}>
+              <label htmlFor="ssh-key-value">Public key</label>
+              <textarea
+                id="ssh-key-value"
+                value={sshPublicKey}
+                onChange={(e) => setSSHPublicKey(e.target.value)}
+                placeholder="ssh-ed25519 AAAA... you@host"
+                rows={3}
+                required
+                style={{
+                  background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 9,
+                  padding: '11px 14px', color: 'var(--text)', fontFamily: 'var(--font-mono)',
+                  fontSize: 12, width: '100%', resize: 'vertical',
+                }}
+              />
+            </div>
+            {sshError && (
+              <div className="login-error show" style={{ marginTop: 12, marginBottom: 12 }}>
+                {sshError}
+              </div>
+            )}
+            <div className="settings-foot">
+              <button
+                className="btn-primary"
+                type="submit"
+                disabled={sshSubmitting}
+                style={{ width: 'auto', padding: '10px 20px' }}
+              >
+                {sshSubmitting ? 'Adding…' : 'Add key'}
               </button>
             </div>
           </form>

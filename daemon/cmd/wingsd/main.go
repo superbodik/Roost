@@ -12,6 +12,7 @@ import (
 	"github.com/yourorg/panel-daemon/internal/config"
 	"github.com/yourorg/panel-daemon/internal/console"
 	"github.com/yourorg/panel-daemon/internal/docker"
+	"github.com/yourorg/panel-daemon/internal/sftpd"
 )
 
 func main() {
@@ -28,6 +29,19 @@ func main() {
 		log.Fatalf("docker: %v", err)
 	}
 	consoleHub := console.NewHub(dockerManager)
+
+	if cfg.PanelURL == "" {
+		log.Println("warning: WINGSD_PANEL_URL is not set — SFTP logins will be rejected until it's configured")
+	}
+	sftpServer, err := sftpd.NewServer(dockerManager, cfg.PanelURL, cfg.DaemonToken, cfg.SFTPHostKey)
+	if err != nil {
+		log.Fatalf("sftp: %v", err)
+	}
+	go func() {
+		if err := sftpServer.ListenAndServe(cfg.SFTPAddr); err != nil {
+			log.Fatalf("sftp: %v", err)
+		}
+	}()
 
 	router := api.NewRouter(dockerManager, consoleHub, cfg.DaemonToken)
 

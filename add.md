@@ -1360,3 +1360,54 @@ actually flow into the create form.
   delete confirmation as a native `window.confirm` for now since it wasn't
   the reported bug and touching every dialog in the app is a separate,
   larger cleanup.
+- Implemented real SFTP access — `ssh_keys` and port 2022 had been reserved
+  in the schema/firewall since the start but never actually built. Design:
+  - **Account page**: users register their own SSH public keys
+    (`SSHKeyHandler` — list/create/delete, fingerprint computed server-side
+    via `ssh.FingerprintSHA256` at upload time so it's never trusted from
+    the client).
+  - **wingsd** embeds a real SSH/SFTP server (`daemon/internal/sftpd`,
+    `golang.org/x/crypto/ssh` + `github.com/pkg/sftp`'s request-server API)
+    on port 2022. `Filecmd`/`Filewrite`/`Filelist` all route every path
+    through the *existing* `files.SafeJoin` used by the REST file manager,
+    so both surfaces share the exact same path-traversal protection rather
+    than duplicating it.
+  - **Auth is a live callback, not a pushed access list**: on every SSH
+    connection, wingsd POSTs `{username, fingerprint}` to a new panel
+    endpoint, `POST /api/v1/internal/sftp/authenticate`, presenting its own
+    daemon token as `Authorization: Bearer`. The username is
+    `<panel-username>.<server-uuid_short>` (Pterodactyl's convention) —
+    the daemon itself doesn't know the full server UUID or which servers
+    exist on the panel's side, only the short ID a human typed, so the
+    panel resolves `uuid_short -> server`, decrypts *that specific node's*
+    stored `daemon_token_encrypted` and constant-time-compares it against
+    the presented token (proving "this really is the node that owns this
+    server" without needing a separate node-identity field), checks the
+    ssh_key fingerprint against that user's registered keys, and runs the
+    exact same `SubuserChecker.CanAccessServer` gate every other per-server
+    resource uses. The response carries the full server UUID back down so
+    wingsd can resolve `ServerVolumePath` — the daemon holds zero
+    credentials or access lists locally, permission changes take effect on
+    the very next login with no push/sync step anywhere.
+  - Verified with a real integration test (`daemon/internal/sftpd/server_test.go`):
+    spins up the actual SSH server against a stub panel, connects a real
+    SSH/SFTP client with a generated keypair, and exercises ReadDir/Mkdir/
+    Create+Write/Remove against the real filesystem plus a path-traversal
+    rejection check — not just "it compiles."
+  - Also fixed a real, pre-existing installer gap while wiring this up: the
+    firewall rule for port 2022 was unconditional (opened even on
+    panel-only installs where nothing ever listens on it) — moved it into
+    the same daemon-only conditional as port 8443. `scripts/daemon.sh` now
+    installs asks for/accepts `WINGSD_PANEL_URL` (needed for the callback)
+    the same way it already does for the daemon token, and the frontend's
+    node-install one-liner now includes `WINGSD_PANEL_URL=<window.location.origin>`
+    automatically.
+  - Sanity-checked an assumption about `daemon/go.mod` along the way:
+    it already said `go 1.25.0` before this session touched it (confirmed
+    via `git show HEAD:daemon/go.mod`), so the earlier "always re-pin to
+    1.22" note in this file was based on an incomplete picture — Go's
+    default `GOTOOLCHAIN=auto` (nothing in `scripts/toolchain.sh` restricts
+    it) transparently downloads whatever toolchain a go.mod actually
+    requires, so a provisioned 1.22.5 install is not actually stuck or
+    broken by a higher `go` directive. Left it at whatever `go mod tidy`
+    naturally resolved to rather than fighting it.

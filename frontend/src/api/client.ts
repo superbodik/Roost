@@ -20,6 +20,7 @@ import type {
   Server,
   ServerDatabase,
   ServerDomain,
+  SSHKey,
   Subuser,
   TwoFASetup,
   TwoFAStatus,
@@ -276,6 +277,16 @@ export const api = {
     }),
 
   deleteApiKey: (id: number) => request<void>(`/account/api-keys/${id}`, { method: 'DELETE' }),
+
+  listSSHKeys: () => request<SSHKey[]>('/account/ssh-keys'),
+
+  createSSHKey: (name: string, publicKey: string) =>
+    request<SSHKey>('/account/ssh-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name, public_key: publicKey }),
+    }),
+
+  deleteSSHKey: (id: number) => request<void>(`/account/ssh-keys/${id}`, { method: 'DELETE' }),
 
   get2FAStatus: () => request<TwoFAStatus>('/account/2fa/status'),
 

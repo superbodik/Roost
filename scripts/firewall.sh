@@ -13,10 +13,10 @@ configure_firewall() {
 
 	ufw allow 80/tcp   comment "Panel HTTP"
 	ufw allow 443/tcp  comment "Panel HTTPS"
-	ufw allow 2022/tcp comment "SFTP"
 
 	if [[ "${INSTALL_MODE:-}" == "daemon" || "${INSTALL_MODE:-}" == "all" ]]; then
 		ufw allow 8443/tcp comment "wingsd control-plane"
+		ufw allow 2022/tcp comment "SFTP"
 	fi
 
 	ufw --force enable
