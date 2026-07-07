@@ -1612,3 +1612,7 @@ actually flow into the create form.
     a "Change password" card on Account, both verified end-to-end in a
     real browser — confirmed the exact right payload reaches each
     endpoint and the success/error states render correctly.
+- **v0.4.0**: user creation + self-service password change (the panel had
+  no way to onboard non-admin users or change a password after account
+  creation, anywhere, until now) — the headline feature, plus egg-variable
+  validation enforcement and two TOCTOU race fixes from the same batch.
