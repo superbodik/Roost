@@ -657,6 +657,19 @@ body::before {
 .path-seg:hover { color: var(--pink); }
 .path-sep { opacity: .3; }
 
+.files-inline-form {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; flex-wrap: wrap;
+}
+.files-inline-form input {
+  flex: 1; min-width: 160px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+  padding: 8px 12px; color: var(--text); font-family: inherit; font-size: 13px;
+  outline: none;
+}
+
 .btn-sm {
   display: flex; align-items: center; gap: 6px;
   padding: 8px 14px;

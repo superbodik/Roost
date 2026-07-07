@@ -1342,3 +1342,21 @@ actually flow into the create form.
      get their own 150s-timeout group sitting alongside it. Verified both
      routers still construct without a chi route-registration panic via a
      throwaway `NewRouter` smoke test on each side before shipping.
+- **"+ Folder" in the Files tab did nothing — no error, no dialog, no new
+  folder"**. Traced the entire path (button → API → daemon → `os.MkdirAll`)
+  and even wrote a throwaway test hitting `files.Mkdir` directly against a
+  real filesystem — the backend logic was completely correct. The actual
+  bug was `window.prompt()`/`window.confirm()` themselves: several mobile
+  browsers and in-app webviews (Telegram's in-app browser, some Android
+  WebViews, PWA contexts) don't support native synchronous dialogs at all
+  and silently return `null`/`false` instead of showing anything — which
+  `handleNewFolder`'s `if (!name) return;` interprets as "user cancelled,"
+  producing exactly "nothing happens" with zero error surfaced. Replaced
+  both the new-folder prompt and the rename prompt (identical pattern,
+  identical risk) with inline forms in the Files tab itself instead of
+  native dialogs — verified end-to-end in a real browser (Playwright,
+  mocked API) that submitting the form actually calls
+  `POST .../files/directory?path=...` with the right path. Left the
+  delete confirmation as a native `window.confirm` for now since it wasn't
+  the reported bug and touching every dialog in the app is a separate,
+  larger cleanup.

@@ -37,6 +37,10 @@ export function FileManager({ uuid }: Props) {
   const [fileContent, setFileContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [renamingEntry, setRenamingEntry] = useState<FileEntry | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function refresh() {
@@ -101,12 +105,23 @@ export function FileManager({ uuid }: Props) {
     }
   }
 
-  async function handleRename(entry: FileEntry, e: React.MouseEvent) {
+  function startRename(entry: FileEntry, e: React.MouseEvent) {
     e.stopPropagation();
-    const newName = window.prompt('New name', entry.name);
-    if (!newName || newName === entry.name) return;
+    setRenamingEntry(entry);
+    setRenameValue(entry.name);
+  }
+
+  async function submitRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renamingEntry) return;
+    const newName = renameValue.trim();
+    if (!newName || newName === renamingEntry.name) {
+      setRenamingEntry(null);
+      return;
+    }
     try {
-      await api.renameFile(uuid, joinPath(path, entry.name), joinPath(path, newName));
+      await api.renameFile(uuid, joinPath(path, renamingEntry.name), joinPath(path, newName));
+      setRenamingEntry(null);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -144,11 +159,17 @@ export function FileManager({ uuid }: Props) {
     }
   }
 
-  async function handleNewFolder() {
-    const name = window.prompt('Folder name');
-    if (!name) return;
+  async function submitNewFolder(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newFolderName.trim();
+    if (!name) {
+      setCreatingFolder(false);
+      return;
+    }
     try {
       await api.createDirectory(uuid, joinPath(path, name));
+      setCreatingFolder(false);
+      setNewFolderName('');
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -213,10 +234,50 @@ export function FileManager({ uuid }: Props) {
         <button className="btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
           {uploading ? 'Uploading…' : 'Upload'}
         </button>
-        <button className="btn-sm primary" onClick={handleNewFolder}>
+        <button
+          className="btn-sm primary"
+          onClick={() => {
+            setCreatingFolder((v) => !v);
+            setNewFolderName('');
+          }}
+        >
           + Folder
         </button>
       </div>
+
+      {creatingFolder && (
+        <form className="files-inline-form" onSubmit={submitNewFolder}>
+          <input
+            autoFocus
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            placeholder="Folder name"
+          />
+          <button className="btn-sm primary" type="submit">
+            Create
+          </button>
+          <button className="btn-sm" type="button" onClick={() => setCreatingFolder(false)}>
+            Cancel
+          </button>
+        </form>
+      )}
+
+      {renamingEntry && (
+        <form className="files-inline-form" onSubmit={submitRename}>
+          <span className="srv-desc">Rename "{renamingEntry.name}" to</span>
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+          />
+          <button className="btn-sm primary" type="submit">
+            Save
+          </button>
+          <button className="btn-sm" type="button" onClick={() => setRenamingEntry(null)}>
+            Cancel
+          </button>
+        </form>
+      )}
 
       {error && (
         <div className="login-error show" style={{ marginBottom: 12 }}>
@@ -256,7 +317,7 @@ export function FileManager({ uuid }: Props) {
                     ⬇
                   </button>
                 )}
-                <button className="file-act-btn" title="Rename" onClick={(e) => handleRename(entry, e)}>
+                <button className="file-act-btn" title="Rename" onClick={(e) => startRename(entry, e)}>
                   ✎
                 </button>
                 <button
