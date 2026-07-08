@@ -319,6 +319,58 @@ tbody tr td:nth-child(2) {
   margin-bottom: 34px;
 }
 
+/* ── Docs ──────────────────────────────────────────────── */
+.docs-hero { max-width: 900px; margin: 0 auto; padding: 148px 24px 40px; text-align: center; }
+.docs-hero h1 { font-size: clamp(32px, 5vw, 46px); font-weight: 500; letter-spacing: -.02em; margin-bottom: 14px; }
+.docs-hero p { color: var(--muted); font-size: 15px; max-width: 560px; margin: 0 auto; }
+
+.docs-layout {
+  max-width: 1120px; margin: 0 auto; padding: 20px 24px 120px;
+  display: grid; grid-template-columns: 220px 1fr; gap: 48px; align-items: start;
+}
+@media (max-width: 860px) { .docs-layout { grid-template-columns: 1fr; } }
+
+.docs-toc {
+  position: sticky; top: 90px;
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 13px;
+}
+.docs-toc-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+.docs-toc a {
+  padding: 7px 10px; border-radius: 8px; color: var(--muted);
+  transition: background .15s, color .15s;
+}
+.docs-toc a:hover { color: var(--text); background: var(--surface); }
+@media (max-width: 860px) {
+  .docs-toc { position: static; flex-direction: row; flex-wrap: wrap; }
+}
+
+.docs-content { min-width: 0; }
+.docs-section { margin-bottom: 56px; scroll-margin-top: 90px; }
+.docs-section h2 { font-size: 22px; font-weight: 500; margin-bottom: 6px; }
+.docs-section h3 { font-size: 15px; font-weight: 500; margin: 22px 0 8px; color: var(--pink-b); }
+.docs-section > p.docs-lede { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+.docs-section p { font-size: 14px; line-height: 1.7; margin-bottom: 12px; }
+.docs-section ul, .docs-section ol { margin: 0 0 12px 20px; font-size: 14px; line-height: 1.8; }
+.docs-section code {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--pink-b);
+  background: rgba(255,255,255,.04); padding: 2px 6px; border-radius: 5px;
+}
+.docs-section pre {
+  background: #070508; border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px;
+}
+.docs-section pre code { background: none; padding: 0; color: var(--text); font-size: 13px; }
+
+.callout {
+  border: 1px solid var(--border); border-left: 3px solid var(--pink);
+  border-radius: 10px; padding: 14px 16px; margin: 14px 0 18px;
+  background: var(--surface); font-size: 13.5px;
+}
+.callout-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--pink-b); margin-bottom: 6px; font-weight: 500; }
+.callout.danger { border-left-color: var(--red); }
+.callout.danger .callout-label { color: var(--red); }
+
 /* ── Footer ────────────────────────────────────────────── */
 footer { border-top: 1px solid var(--border); padding: 32px 24px; position: relative; z-index: 1; }
 .footer-inner {

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Docs & Guides — PowerNode</title>
+<meta name="description" content="Install, update, and troubleshooting guides for PowerNode — SFTP setup, custom domains, and common install issues." />
+<link rel="canonical" href="https://powernode.pp.ua/docs.html" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="bg-blobs" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+</div>
+
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">⚡</span>
+      <span class="brand-text">PowerNode</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#compare">Compare</a>
+      <a href="index.html#deploy">Install</a>
+      <a href="docs.html">Docs</a>
+    </div>
+    <a class="btn-ghost" href="https://github.com/superbodik/PowerNode" target="_blank" rel="noopener">
+      <span>GitHub</span>
+      <span class="star">★</span>
+    </a>
+  </div>
+</nav>
+
+<main>
+
+  <div class="docs-hero">
+    <h1>Docs &amp; Guides</h1>
+    <p>Install, update, and the exact fixes for the problems people actually hit.</p>
+  </div>
+
+  <div class="docs-layout">
+    <aside class="docs-toc">
+      <div class="docs-toc-label">On this page</div>
+      <a href="#install">Install &amp; update</a>
+      <a href="#sftp">SFTP</a>
+      <a href="#domains">Custom domains</a>
+      <a href="#install-errors">Install errors</a>
+      <a href="#commands">Useful commands</a>
+      <a href="#help">Getting help</a>
+    </aside>
+
+    <div class="docs-content">
+
+      <section class="docs-section" id="install">
+        <h2>Install &amp; update</h2>
+        <p class="docs-lede">One command, Ubuntu 22.04/24.04, run as root.</p>
+        <pre><code>bash &lt;(curl -sSL https://raw.githubusercontent.com/superbodik/PowerNode/main/install.sh)</code></pre>
+        <p>The installer asks which language to use, then offers a menu: install the master panel,
+        install a daemon node, install both on one host, or uninstall. Picking the panel also asks
+        for a domain (for a free Let's Encrypt certificate) and creates your first admin account —
+        there is no signup form, only <code>panel-admin</code> and this installer create accounts.</p>
+        <p>To update an existing install, run the same command with a flag instead of picking from
+        the menu:</p>
+        <pre><code>PANEL_UPDATE=1 bash &lt;(curl -sSL https://raw.githubusercontent.com/superbodik/PowerNode/main/install.sh)</code></pre>
+        <h3>Adding a node</h3>
+        <p>Create the node first in the panel (<strong>Nodes → Add node</strong>) — it'll show you a
+        ready-to-paste one-liner with the daemon token and panel URL already filled in. Run that
+        exact command on the node's server instead of picking option 2 from the interactive menu by
+        hand; the one-liner sets <code>WINGSD_PANEL_URL</code> for you automatically, which the
+        interactive path can't always guess (see the SFTP section below for what happens if it's
+        missing).</p>
+      </section>
+
+      <section class="docs-section" id="sftp">
+        <h2>SFTP: "Authentication required" / "No more authentication methods available"</h2>
+        <p class="docs-lede">By far the most common support question. Here's the full decision tree.</p>
+
+        <h3>1. SFTP here is public-key only — there is no password login</h3>
+        <p>If your client is set to log in with a username/password (FileZilla's Quick Connect bar
+        does this by default), it will always fail with exactly this error, because the server never
+        offers a password method at all. You need a registered SSH key.</p>
+        <ol>
+          <li>Generate a key pair if you don't have one (<code>ssh-keygen -t ed25519</code>, or
+          PuTTYgen on Windows).</li>
+          <li>Paste the <strong>public</strong> key into <strong>Account → SSH Keys</strong> in the panel.</li>
+          <li>In your SFTP client, use the matching <strong>private</strong> key file to log in — not a password.</li>
+        </ol>
+
+        <div class="callout">
+          <div class="callout-label">Windows + FileZilla</div>
+          FileZilla's SFTP engine needs a PuTTY-format <code>.ppk</code> key, not the raw OpenSSH key
+          <code>ssh-keygen</code> produces. Open <strong>PuTTYgen → Conversions → Import key</strong>,
+          load your OpenSSH private key, then <strong>Save private key</strong> as <code>.ppk</code> and
+          point FileZilla's Site Manager (<em>Logon Type: Key file</em>) at that file. Prefer to skip
+          the conversion entirely? Use <strong>WinSCP</strong> or Windows' built-in
+          <code>sftp</code>/<code>ssh</code> client instead — both accept the OpenSSH key directly.
+        </div>
+
+        <h3>2. Username format</h3>
+        <p>It's <code>&lt;your panel username&gt;.&lt;server id&gt;</code> — both are shown in the
+        <strong>SFTP access</strong> card on the server's Overview tab. Port is always <code>2022</code>.</p>
+
+        <h3>3. Node still refuses every key ("no auth passed yet")</h3>
+        <p>If the key and username are both correct and it's still failing, the node itself is
+        usually missing its panel address. The SFTP server on each node has to call back to the
+        panel to verify every login, and if it doesn't know where the panel is, it rejects the
+        connection before it even looks at your key or username.</p>
+        <div class="callout danger">
+          <div class="callout-label">Check this first</div>
+          On the node, run: <code>grep PANEL_URL /etc/wingsd/wingsd.env</code>. If it's empty or
+          missing, that's the bug. Fix it and restart:
+          <pre><code>echo "WINGSD_PANEL_URL=http://127.0.0.1:8080" &gt;&gt; /etc/wingsd/wingsd.env
+systemctl restart wingsd</code></pre>
+          Use <code>127.0.0.1:8080</code> only if the panel runs on this same server (an
+          all-in-one install). If the panel is on a different host, use its real address instead,
+          e.g. <code>https://panel.example.com</code>.
+        </div>
+        <p>Newer installs set this automatically — this only bites installs done through the
+        interactive menu (option 2, node-only) before that fix, or manual reinstalls that skipped
+        the prompt.</p>
+
+        <h3>4. Still stuck? Read the real reason</h3>
+        <p>SSH deliberately never tells the <em>client</em> why a key was rejected (that's normal
+        protocol behavior, not a bug) — but the node logs the exact reason:</p>
+        <pre><code>journalctl -u wingsd -f</code></pre>
+        <p>Try connecting again and watch for a line like <code>sftp: auth failed for &lt;ip&gt;: ...</code> —
+        it'll say exactly what went wrong: unknown user, unrecognized key, no access to that server, or
+        the missing-panel-URL error above.</p>
+      </section>
+
+      <section class="docs-section" id="domains">
+        <h2>Custom domains &amp; HTTPS not issuing</h2>
+        <p class="docs-lede">Attaching a domain to a server (or to the panel itself during install)
+        runs certbot against Let's Encrypt, which only works if DNS is already correct.</p>
+        <ul>
+          <li>Make sure the domain's <code>A</code> record already points at the node's public IP
+          <strong>before</strong> you add it — certbot can't issue a certificate for a domain that
+          doesn't resolve to this server yet.</li>
+          <li>If it fails, the domain stays on plain HTTP instead of blocking the whole operation —
+          fix DNS, then remove and re-add the domain (or re-run the panel installer's domain step).</li>
+          <li>Both the panel install and the per-server domains feature use the same certbot/nginx
+          setup on the node, so the fix is the same either way.</li>
+        </ul>
+      </section>
+
+      <section class="docs-section" id="install-errors">
+        <h2>Common install errors</h2>
+
+        <h3>PostgreSQL cluster broken after a full uninstall + reinstall</h3>
+        <p>If you ran the <strong>full removal</strong> option and then reinstalled, and Postgres
+        fails to start or the panel can't reach the database, apt likely left a partial PostgreSQL
+        install behind (some installs only purge the <code>postgresql</code> metapackage, not the
+        actual versioned engine like <code>postgresql-16</code>). The installer handles this
+        correctly on current versions — if you're still hitting it, purge every leftover
+        <code>postgresql*</code> package by name and clean the config directories before
+        reinstalling:</p>
+        <pre><code>dpkg -l | grep postgresql
+apt-get purge -y $(dpkg -l | grep postgresql | awk '{print $2}')
+rm -rf /etc/postgresql /etc/postgresql-common /var/log/postgresql</code></pre>
+        <p>Then re-run <code>install.sh</code>.</p>
+
+        <h3>"Docker must be installed before wingsd"</h3>
+        <p>The daemon needs Docker to actually run game server containers. The installer installs it
+        automatically on supported Ubuntu versions — if this still shows up, Docker's own install
+        script failed silently (usually a broken apt source). Check <code>docker --version</code>
+        manually and install Docker per Docker's own instructions if needed, then re-run
+        <code>install.sh</code>.</p>
+      </section>
+
+      <section class="docs-section" id="commands">
+        <h2>Useful commands</h2>
+        <table>
+          <thead><tr><th>What</th><th>Command</th></tr></thead>
+          <tbody>
+            <tr><td>Panel logs</td><td><code>journalctl -u panel -f</code></td></tr>
+            <tr><td>Node daemon logs</td><td><code>journalctl -u wingsd -f</code></td></tr>
+            <tr><td>Restart panel</td><td><code>systemctl restart panel</code></td></tr>
+            <tr><td>Restart node daemon</td><td><code>systemctl restart wingsd</code></td></tr>
+            <tr><td>Panel env file</td><td><code>/etc/panel/panel.env</code></td></tr>
+            <tr><td>Node env file</td><td><code>/etc/wingsd/wingsd.env</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="docs-section" id="help">
+        <h2>Getting help</h2>
+        <p>Nothing here cover it? Open an issue on
+        <a href="https://github.com/superbodik/PowerNode/issues" target="_blank" rel="noopener">GitHub</a>
+        with the relevant log lines from <code>journalctl</code> — that's almost always the fastest
+        way to get to the actual cause, same as everything on this page.</p>
+      </section>
+
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="brand footer-brand">
+      <span class="brand-mark">⚡</span><span class="brand-text">PowerNode</span>
+    </div>
+    <div class="footer-links">
+      <a href="https://powernode.pp.ua" target="_blank" rel="noopener">powernode.pp.ua</a>
+      <a href="https://github.com/superbodik/PowerNode" target="_blank" rel="noopener">GitHub</a>
+      <a href="index.html">Home</a>
+    </div>
+    <div class="footer-note">Self-hosted. Open source. Built different.</div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
