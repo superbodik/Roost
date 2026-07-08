@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { ActivityEntry } from '../types';
 
@@ -10,6 +10,15 @@ export function Activity() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter(
+      (e) => (e.username ?? 'system').toLowerCase().includes(q) || e.event.toLowerCase().includes(q),
+    );
+  }, [entries, query]);
 
   useEffect(() => {
     api
@@ -45,6 +54,20 @@ export function Activity() {
         <p>Recent actions across the panel.</p>
       </div>
 
+      {!loading && (
+        <div className="dash-toolbar">
+          <div className="search-wrap">
+            <span className="search-icon">⌕</span>
+            <input
+              type="text"
+              placeholder="Search by user or event…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <p className="srv-desc">Loading…</p>
       ) : (
@@ -55,7 +78,7 @@ export function Activity() {
             <span>IP</span>
             <span>Time</span>
           </div>
-          {entries.map((entry) => (
+          {filtered.map((entry) => (
             <div className="act-row" key={entry.id}>
               <div className="act-user">
                 <div className="act-ava">
@@ -71,6 +94,11 @@ export function Activity() {
           {entries.length === 0 && (
             <p className="srv-desc" style={{ padding: 16 }}>
               No activity yet.
+            </p>
+          )}
+          {entries.length > 0 && filtered.length === 0 && (
+            <p className="srv-desc" style={{ padding: 16 }}>
+              No activity matches your search.
             </p>
           )}
         </div>

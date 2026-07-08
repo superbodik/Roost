@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { Allocation, CreateNodeResponse, DatabaseHost, Node, NodeStatus } from '../types';
 
@@ -74,10 +74,17 @@ export function Nodes() {
   const [expandedNodeId, setExpandedNodeId] = useState<number | null>(null);
   const [deletingNodeId, setDeletingNodeId] = useState<number | null>(null);
   const [panelVersion, setPanelVersion] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     api.getVersion().then((v) => setPanelVersion(v.version)).catch(() => {});
   }, []);
+
+  const filteredNodes = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return nodes;
+    return nodes.filter((n) => n.name.toLowerCase().includes(q) || n.fqdn.toLowerCase().includes(q));
+  }, [nodes, query]);
   const [editForm, setEditForm] = useState({
     name: '',
     fqdn: '',
@@ -371,6 +378,20 @@ export function Nodes() {
         </form>
       </div>
 
+      {!loading && (
+        <div className="dash-toolbar">
+          <div className="search-wrap">
+            <span className="search-icon">⌕</span>
+            <input
+              type="text"
+              placeholder="Search nodes…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <p className="srv-desc">Loading nodes…</p>
       ) : (
@@ -381,7 +402,7 @@ export function Nodes() {
             <span>Memory / Disk</span>
             <span>Status</span>
           </div>
-          {nodes.map((node) => {
+          {filteredNodes.map((node) => {
             const status = statuses[node.id];
             const expanded = expandedNodeId === node.id;
             return (
@@ -605,6 +626,9 @@ export function Nodes() {
             );
           })}
           {nodes.length === 0 && <p className="srv-desc" style={{ padding: 16 }}>No nodes yet.</p>}
+          {nodes.length > 0 && filteredNodes.length === 0 && (
+            <p className="srv-desc" style={{ padding: 16 }}>No nodes match your search.</p>
+          )}
         </div>
       )}
 

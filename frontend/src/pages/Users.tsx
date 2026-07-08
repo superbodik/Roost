@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { PanelUser } from '../types';
 
@@ -8,6 +8,7 @@ export function Users() {
   const [error, setError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<number, { serverLimit: string }>>({});
   const [saving, setSaving] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
 
   const [createForm, setCreateForm] = useState({
     email: '',
@@ -43,6 +44,14 @@ export function Users() {
   }
 
   useEffect(refresh, []);
+
+  const filteredUsers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !users) return users ?? [];
+    return users.filter(
+      (u) => u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+    );
+  }, [users, query]);
 
   async function handleToggleAdmin(u: PanelUser) {
     setSaving(u.id);
@@ -220,6 +229,18 @@ export function Users() {
       {!forbidden && users === null && <p className="srv-desc">Loading…</p>}
 
       {users && (
+        <>
+        <div className="dash-toolbar">
+          <div className="search-wrap">
+            <span className="search-icon">⌕</span>
+            <input
+              type="text"
+              placeholder="Search users…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
         <div className="db-table">
           <div className="db-head">
             <span>User</span>
@@ -227,7 +248,7 @@ export function Users() {
             <span>Active</span>
             <span>Server limit</span>
           </div>
-          {users.map((u) => (
+          {filteredUsers.map((u) => (
             <div key={u.id}>
             <div className="db-row">
               <span
@@ -313,7 +334,11 @@ export function Users() {
             </div>
           ))}
           {users.length === 0 && <p className="srv-desc" style={{ padding: 16 }}>No users yet.</p>}
+          {users.length > 0 && filteredUsers.length === 0 && (
+            <p className="srv-desc" style={{ padding: 16 }}>No users match your search.</p>
+          )}
         </div>
+        </>
       )}
     </div>
   );
