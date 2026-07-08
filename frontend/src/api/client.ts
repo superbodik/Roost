@@ -292,7 +292,8 @@ export const api = {
 
   checkUpdate: () => request<UpdateCheck>('/version/check'),
 
-  listActivity: () => request<ActivityEntry[]>('/activity'),
+  listActivity: (beforeId?: number) =>
+    request<ActivityEntry[]>(`/activity${beforeId ? `?before_id=${beforeId}` : ''}`),
 
   listEggs: () => request<Egg[]>('/eggs'),
 

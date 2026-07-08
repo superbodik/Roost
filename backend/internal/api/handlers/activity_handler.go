@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -20,12 +22,34 @@ type activityEntry struct {
 }
 
 func (h *ActivityHandler) List(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query(r.Context(), `
-		SELECT a.id, u.username, a.event, HOST(a.ip_address), a.created_at
-		FROM activity_logs a
-		LEFT JOIN users u ON u.id = a.actor_user_id
-		ORDER BY a.created_at DESC
-		LIMIT 100`)
+	var beforeID int64
+	if raw := r.URL.Query().Get("before_id"); raw != "" {
+		var err error
+		beforeID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid before_id", http.StatusBadRequest)
+			return
+		}
+	}
+
+	var rows pgx.Rows
+	var err error
+	if beforeID > 0 {
+		rows, err = h.DB.Query(r.Context(), `
+			SELECT a.id, u.username, a.event, HOST(a.ip_address), a.created_at
+			FROM activity_logs a
+			LEFT JOIN users u ON u.id = a.actor_user_id
+			WHERE a.id < $1
+			ORDER BY a.id DESC
+			LIMIT 100`, beforeID)
+	} else {
+		rows, err = h.DB.Query(r.Context(), `
+			SELECT a.id, u.username, a.event, HOST(a.ip_address), a.created_at
+			FROM activity_logs a
+			LEFT JOIN users u ON u.id = a.actor_user_id
+			ORDER BY a.id DESC
+			LIMIT 100`)
+	}
 	if err != nil {
 		http.Error(w, "failed to list activity", http.StatusInternalServerError)
 		return
