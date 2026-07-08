@@ -133,12 +133,6 @@ export function App() {
               <span className="nav-icon">☰</span> Activity
             </div>
             <div
-              className={`nav-item ${view === 'settings' ? 'active' : ''}`}
-              onClick={() => goTo('settings')}
-            >
-              <span className="nav-icon">⚙</span> Settings
-            </div>
-            <div
               className={`nav-item ${view === 'account' ? 'active' : ''}`}
               onClick={() => goTo('account')}
             >
@@ -146,6 +140,12 @@ export function App() {
             </div>
           </div>
           <div className="sidebar-footer">
+            <div
+              className={`nav-item ${view === 'settings' ? 'active' : ''}`}
+              onClick={() => goTo('settings')}
+            >
+              <span className="nav-icon">⚙</span> Settings
+            </div>
             <div className="nav-item logout-item" onClick={handleLogout}>
               <span className="nav-icon">⏻</span> Log out
             </div>

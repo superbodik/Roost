@@ -9,3 +9,10 @@ wingsd.env
 
 .vscode/
 .idea/
+
+add.md
+arbeit.md
+install.md
+docs/PROTOCOL.md
+docs/DATABASE.md
+docs/ARCHITECTURE.md

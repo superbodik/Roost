@@ -47,6 +47,29 @@ install_daemon_proxy() {
 	log_ok "nginx + certbot ready (used for per-server custom domains)"
 }
 
+resolve_panel_url() {
+	local panel_url="${WINGSD_PANEL_URL:-}"
+	if [[ -n "$panel_url" ]]; then
+		echo "$panel_url"
+		return
+	fi
+
+	if [[ "${INSTALL_MODE:-}" == "all" ]] || systemctl is-active --quiet panel 2>/dev/null; then
+		echo "http://127.0.0.1:8080"
+		return
+	fi
+
+	echo >&2
+	echo "$(msg panel_url_intro)" >&2
+	while [[ -z "$panel_url" ]]; do
+		read -rp "$(msg panel_url_ask)" panel_url
+		if [[ -z "$panel_url" ]]; then
+			log_warn "$(msg panel_url_required)"
+		fi
+	done
+	echo "$panel_url"
+}
+
 write_daemon_env() {
 	if [[ -f "$DAEMON_ENV_FILE" ]]; then
 		if [[ -n "${WINGSD_DAEMON_TOKEN:-}" ]]; then
@@ -55,18 +78,26 @@ write_daemon_env() {
 		else
 			log_warn "$DAEMON_ENV_FILE already exists — leaving it untouched (no WINGSD_DAEMON_TOKEN provided to update it)"
 		fi
-		if [[ -n "${WINGSD_PANEL_URL:-}" ]]; then
-			if grep -q '^WINGSD_PANEL_URL=' "$DAEMON_ENV_FILE"; then
+
+		if grep -q '^WINGSD_PANEL_URL=.\+' "$DAEMON_ENV_FILE"; then
+			if [[ -n "${WINGSD_PANEL_URL:-}" ]]; then
 				sed -i "s|^WINGSD_PANEL_URL=.*|WINGSD_PANEL_URL=${WINGSD_PANEL_URL}|" "$DAEMON_ENV_FILE"
-			else
-				echo "WINGSD_PANEL_URL=${WINGSD_PANEL_URL}" >> "$DAEMON_ENV_FILE"
+				log_ok "Updated panel URL in $DAEMON_ENV_FILE"
 			fi
-			log_ok "Updated panel URL in $DAEMON_ENV_FILE"
+		else
+			local panel_url
+			panel_url=$(resolve_panel_url)
+			if grep -q '^WINGSD_PANEL_URL=' "$DAEMON_ENV_FILE"; then
+				sed -i "s|^WINGSD_PANEL_URL=.*|WINGSD_PANEL_URL=${panel_url}|" "$DAEMON_ENV_FILE"
+			else
+				echo "WINGSD_PANEL_URL=${panel_url}" >> "$DAEMON_ENV_FILE"
+			fi
+			log_ok "Set panel URL in $DAEMON_ENV_FILE (was missing — this is required for SFTP logins to work)"
 		fi
 		return
 	fi
 
-	local node_uuid daemon_token
+	local node_uuid daemon_token panel_url
 	node_uuid=$(cat /proc/sys/kernel/random/uuid)
 
 	if [[ -n "${WINGSD_DAEMON_TOKEN:-}" ]]; then
@@ -81,13 +112,7 @@ write_daemon_env() {
 		fi
 	fi
 
-	local panel_url="${WINGSD_PANEL_URL:-}"
-	if [[ -z "$panel_url" ]]; then
-		read -rp "$(msg panel_url_ask)" panel_url
-	fi
-	if [[ -z "$panel_url" ]]; then
-		log_warn "No panel URL given — SFTP logins will be rejected until WINGSD_PANEL_URL is set in $DAEMON_ENV_FILE"
-	fi
+	panel_url=$(resolve_panel_url)
 
 	cat >"$DAEMON_ENV_FILE" <<-EOF
 	WINGSD_NODE_UUID=${node_uuid}
@@ -97,7 +122,7 @@ write_daemon_env() {
 	WINGSD_DATA_DIR=${DAEMON_DATA_DIR}
 	EOF
 	chmod 600 "$DAEMON_ENV_FILE"
-	log_ok "Wrote $DAEMON_ENV_FILE (mode 600)"
+	log_ok "Wrote $DAEMON_ENV_FILE (mode 600), panel URL: ${panel_url}"
 	log_warn "Running without TLS certs configured — set WINGSD_TLS_CERT/WINGSD_TLS_KEY in $DAEMON_ENV_FILE for production"
 }
 
